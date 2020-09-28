@@ -21,5 +21,4 @@ gevent==1.4.0
 pyscaffold==3.2.3
 eiffellib==1.1.0
 requests==2.24.0
-# etos_lib==1.2.0
-etos-lib==0.0.post0.dev2+g773b419
+etos_lib==1.0.0
