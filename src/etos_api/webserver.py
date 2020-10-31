@@ -21,6 +21,7 @@ import falcon
 
 from etos_api.middleware import RequireJSON, JSONTranslator
 from etos_api.lib.params import Params
+from etos_api.lib.validator import SuiteValidator, ValidationError
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +38,16 @@ class Webserver:
     def on_post(request, response):
         """Handle POST requests. Generate and execute an ETOS test suite."""
         params = Params(request)
+        validator = SuiteValidator(params)
+        try:
+            validator.validate()
+        except (ValidationError, AssertionError) as exception:
+            response.status = falcon.HTTP_400
+            response.media = {
+                "error": "Not a valid suite definition provided",
+                "details": traceback.format_exc(),
+            }
+            return
         try:
             result = params.tester.handle()
         except Exception as exc:  # pylint: disable=broad-except
