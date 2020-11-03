@@ -100,11 +100,19 @@ class Recipe(BaseModel):
     ):  # Pydantic requires cls. pylint:disable=no-self-argument
         """Validate the constraints fields for each recipe.
 
-        This is a separate method where the validation is done manually.
-        That is because the error messages from pydantic are not clear enough
-        when using a Union check on the models.
+        Validation is done manually because error messages from pydantic
+        are not clear enough when using a Union check on the models.
         Pydantic does not check the number of unions either, which is something
         that is required for ETOS.
+
+        :raises ValueError: if there are too many or too few constraints.
+        :raises TypeError: If an unknown constraint is detected.
+        :raises ValidationError: If constraint model does not validate.
+
+        :param value: The current constraint that is being validated.
+        :type value: Any
+        :return: Same as value, if validated.
+        :rtype: Any
         """
         count = dict.fromkeys(cls.__constraint_models.keys(), 0)
         for constraint in value:
