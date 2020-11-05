@@ -178,4 +178,5 @@ class SuiteValidator:  # pylint:disable=too-few-public-methods
         :raises ValidationError: If the suite did not validate.
         """
         downloaded_suite = self._download_suite()
-        assert Suite(**downloaded_suite)
+        for suite in downloaded_suite:
+            assert Suite(**suite)
