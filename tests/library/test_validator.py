@@ -16,20 +16,22 @@
 """Tests for the validator library."""
 import logging
 import sys
-from unittest import TestCase
-from unittest.mock import patch, Mock
-from etos_api.lib.validator import SuiteValidator, ValidationError
+from unittest.mock import patch
+import pytest
+from etos_api.library.validator import SuiteValidator, ValidationError
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
 
-class TestValidator(TestCase):
+class TestValidator:
     """Test the validator library."""
 
     logger = logging.getLogger(__name__)
+    # Mark all test methods as asyncio methods to tell pytest to 'await' them.
+    pytestmark = pytest.mark.asyncio
 
-    @patch("etos_api.lib.validator.SuiteValidator._download_suite")
-    def test_validate_proper_suite(self, download_suite_mock):
+    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    async def test_validate_proper_suite(self, download_suite_mock):
         """Test that the validator validates a proper suite correctly.
 
         Approval criteria:
@@ -39,40 +41,42 @@ class TestValidator(TestCase):
             1. Validate a proper suite.
             2. Verify that no exceptions were raised.
         """
-        download_suite_mock.return_value = {
-            "name": "TestValidator",
-            "priority": 1,
-            "recipes": [
-                {
-                    "constraints": [
-                        {"key": "ENVIRONMENT", "value": {}},
-                        {"key": "PARAMETERS", "value": {}},
-                        {"key": "COMMAND", "value": "exit 0"},
-                        {"key": "TEST_RUNNER", "value": "TestRunner"},
-                        {"key": "EXECUTE", "value": []},
-                        {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
-                    ],
-                    "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7885",
-                    "testCase": {
-                        "id": "test_validate_proper_suite",
-                        "tracker": "Github",
-                        "url": "https://github.com/eiffel-community/etos-api",
-                    },
-                }
-            ],
-        }
+        download_suite_mock.return_value = [
+            {
+                "name": "TestValidator",
+                "priority": 1,
+                "recipes": [
+                    {
+                        "constraints": [
+                            {"key": "ENVIRONMENT", "value": {}},
+                            {"key": "PARAMETERS", "value": {}},
+                            {"key": "COMMAND", "value": "exit 0"},
+                            {"key": "TEST_RUNNER", "value": "TestRunner"},
+                            {"key": "EXECUTE", "value": []},
+                            {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
+                        ],
+                        "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7885",
+                        "testCase": {
+                            "id": "test_validate_proper_suite",
+                            "tracker": "Github",
+                            "url": "https://github.com/eiffel-community/etos-api",
+                        },
+                    }
+                ],
+            }
+        ]
         self.logger.info("STEP: Validate a proper suite.")
-        validator = SuiteValidator(Mock())
+        validator = SuiteValidator()
         try:
-            validator.validate()
+            await validator.validate("url")
             exception = False
         except (AssertionError, ValidationError):
             exception = True
         self.logger.info("STEP: Verify that no exceptions were raised.")
-        self.assertFalse(exception)
+        assert exception is False
 
-    @patch("etos_api.lib.validator.SuiteValidator._download_suite")
-    def test_validate_missing_constraints(self, download_suite_mock):
+    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    async def test_validate_missing_constraints(self, download_suite_mock):
         """Test that the validator fails when missing required constraints.
 
         Approval criteria:
@@ -82,39 +86,41 @@ class TestValidator(TestCase):
             1. Validate a suite with a missing constraint.
             2. Verify that the validator raises ValidationError.
         """
-        download_suite_mock.return_value = {
-            "name": "TestValidator",
-            "priority": 1,
-            "recipes": [
-                {
-                    "constraints": [
-                        {"key": "ENVIRONMENT", "value": {}},
-                        {"key": "PARAMETERS", "value": {}},
-                        {"key": "COMMAND", "value": "exit 0"},
-                        {"key": "EXECUTE", "value": []},
-                        {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
-                    ],
-                    "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7887",
-                    "testCase": {
-                        "id": "test_validate_missing_constraints",
-                        "tracker": "Github",
-                        "url": "https://github.com/eiffel-community/etos-api",
-                    },
-                }
-            ],
-        }  # TEST_RUNNER is missing
+        download_suite_mock.return_value = [
+            {
+                "name": "TestValidator",
+                "priority": 1,
+                "recipes": [
+                    {
+                        "constraints": [
+                            {"key": "ENVIRONMENT", "value": {}},
+                            {"key": "PARAMETERS", "value": {}},
+                            {"key": "COMMAND", "value": "exit 0"},
+                            {"key": "EXECUTE", "value": []},
+                            {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
+                        ],
+                        "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7887",
+                        "testCase": {
+                            "id": "test_validate_missing_constraints",
+                            "tracker": "Github",
+                            "url": "https://github.com/eiffel-community/etos-api",
+                        },
+                    }
+                ],
+            }
+        ]  # TEST_RUNNER is missing
         self.logger.info("STEP: Validate a suite with a missing constraint.")
-        validator = SuiteValidator(Mock())
+        validator = SuiteValidator()
         try:
-            validator.validate()
+            await validator.validate("url")
             exception = False
         except ValidationError:
             exception = True
         self.logger.info("STEP: Verify that the validator raises ValidationError.")
-        self.assertTrue(exception)
+        assert exception is True
 
-    @patch("etos_api.lib.validator.SuiteValidator._download_suite")
-    def test_validate_wrong_types(self, download_suite_mock):
+    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    async def test_validate_wrong_types(self, download_suite_mock):
         """Test that the validator fails when constraints have the wrong types.
 
         Approval criteria:
@@ -191,17 +197,17 @@ class TestValidator(TestCase):
             ],
         ]
         self.logger.info("STEP: For each constraint.")
-        validator = SuiteValidator(Mock())
+        validator = SuiteValidator()
         for constraint in constraints:
             self.logger.info("STEP: Validate constraint with wrong type.")
             base_suite["recipes"][0]["constraints"] = constraint
-            download_suite_mock.return_value = base_suite
+            download_suite_mock.return_value = [base_suite]
             self.logger.info("STEP: Verify that the validator raises ValidationError.")
-            with self.assertRaises(ValidationError, msg=constraint):
-                validator.validate()
+            with pytest.raises(ValidationError):
+                await validator.validate("url")
 
-    @patch("etos_api.lib.validator.SuiteValidator._download_suite")
-    def test_validate_too_many_constraints(self, download_suite_mock):
+    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    async def test_validate_too_many_constraints(self, download_suite_mock):
         """Test that the validator fails when a constraint is defined multiple times.
 
         Approval criteria:
@@ -211,43 +217,45 @@ class TestValidator(TestCase):
             1. Validate a suite with a constraint defined multiple times.
             2. Verify that the validator raises ValidationError.
         """
-        download_suite_mock.return_value = {
-            "name": "TestValidator",
-            "priority": 1,
-            "recipes": [
-                {
-                    "constraints": [
-                        {"key": "ENVIRONMENT", "value": {}},
-                        {"key": "PARAMETERS", "value": {}},
-                        {"key": "TEST_RUNNER", "value": "TestRunner"},
-                        {"key": "TEST_RUNNER", "value": "AnotherTestRunner"},
-                        {"key": "COMMAND", "value": "exit 0"},
-                        {"key": "EXECUTE", "value": []},
-                        {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
-                    ],
-                    "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7887",
-                    "testCase": {
-                        "id": "test_validate_too_many_constraints",
-                        "tracker": "Github",
-                        "url": "https://github.com/eiffel-community/etos-api",
-                    },
-                }
-            ],
-        }
+        download_suite_mock.return_value = [
+            {
+                "name": "TestValidator",
+                "priority": 1,
+                "recipes": [
+                    {
+                        "constraints": [
+                            {"key": "ENVIRONMENT", "value": {}},
+                            {"key": "PARAMETERS", "value": {}},
+                            {"key": "TEST_RUNNER", "value": "TestRunner"},
+                            {"key": "TEST_RUNNER", "value": "AnotherTestRunner"},
+                            {"key": "COMMAND", "value": "exit 0"},
+                            {"key": "EXECUTE", "value": []},
+                            {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
+                        ],
+                        "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7887",
+                        "testCase": {
+                            "id": "test_validate_too_many_constraints",
+                            "tracker": "Github",
+                            "url": "https://github.com/eiffel-community/etos-api",
+                        },
+                    }
+                ],
+            }
+        ]
         self.logger.info(
             "STEP: Validate a suite with a constraint defined multiple times."
         )
-        validator = SuiteValidator(Mock())
+        validator = SuiteValidator()
         try:
-            validator.validate()
+            await validator.validate("url")
             exception = False
         except ValidationError:
             exception = True
         self.logger.info("STEP: Verify that the validator raises ValidationError.")
-        self.assertTrue(exception)
+        assert exception is True
 
-    @patch("etos_api.lib.validator.SuiteValidator._download_suite")
-    def test_validate_unknown_constraint(self, download_suite_mock):
+    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    async def test_validate_unknown_constraint(self, download_suite_mock):
         """Test that the validator fails when an unknown constraint is defined.
 
         Approval criteria:
@@ -257,41 +265,43 @@ class TestValidator(TestCase):
             1. Validate a suite with an unknown constraint.
             2. Verify that the validator raises ValidationError.
         """
-        download_suite_mock.return_value = {
-            "name": "TestValidator",
-            "priority": 1,
-            "recipes": [
-                {
-                    "constraints": [
-                        {"key": "ENVIRONMENT", "value": {}},
-                        {"key": "PARAMETERS", "value": {}},
-                        {"key": "TEST_RUNNER", "value": "TestRunner"},
-                        {"key": "COMMAND", "value": "exit 0"},
-                        {"key": "EXECUTE", "value": []},
-                        {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
-                        {"key": "UNKNOWN", "value": "Hello"},
-                    ],
-                    "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7887",
-                    "testCase": {
-                        "id": "test_validate_unknown_constraint",
-                        "tracker": "Github",
-                        "url": "https://github.com/eiffel-community/etos-api",
-                    },
-                }
-            ],
-        }
+        download_suite_mock.return_value = [
+            {
+                "name": "TestValidator",
+                "priority": 1,
+                "recipes": [
+                    {
+                        "constraints": [
+                            {"key": "ENVIRONMENT", "value": {}},
+                            {"key": "PARAMETERS", "value": {}},
+                            {"key": "TEST_RUNNER", "value": "TestRunner"},
+                            {"key": "COMMAND", "value": "exit 0"},
+                            {"key": "EXECUTE", "value": []},
+                            {"key": "CHECKOUT", "value": ["echo 'checkout'"]},
+                            {"key": "UNKNOWN", "value": "Hello"},
+                        ],
+                        "id": "131a7499-7ad4-4c4a-8a66-4e9ac95c7887",
+                        "testCase": {
+                            "id": "test_validate_unknown_constraint",
+                            "tracker": "Github",
+                            "url": "https://github.com/eiffel-community/etos-api",
+                        },
+                    }
+                ],
+            }
+        ]
         self.logger.info("STEP: Validate a suite with an unknown constraint.")
-        validator = SuiteValidator(Mock())
+        validator = SuiteValidator()
         try:
-            validator.validate()
+            await validator.validate("url")
             exception = False
         except ValidationError:
             exception = True
         self.logger.info("STEP: Verify that the validator raises ValidationError.")
-        self.assertTrue(exception)
+        assert exception is True
 
-    @patch("etos_api.lib.validator.SuiteValidator._download_suite")
-    def test_validate_empty_constraints(self, download_suite_mock):
+    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    async def test_validate_empty_constraints(self, download_suite_mock):
         """Test that required constraints are not empty.
 
         Approval criteria:
@@ -343,10 +353,10 @@ class TestValidator(TestCase):
             ],
         ]
         self.logger.info("STEP: For each required key.")
-        validator = SuiteValidator(Mock())
+        validator = SuiteValidator()
         for constraint in constraints:
             base_suite["recipes"][0]["constraints"] = constraint
-            download_suite_mock.return_value = base_suite
+            download_suite_mock.return_value = [base_suite]
             self.logger.info("STEP: Validate a suite without the required key.")
-            with self.assertRaises(ValidationError, msg=constraint):
-                validator.validate()
+            with pytest.raises(ValidationError):
+                await validator.validate("url")

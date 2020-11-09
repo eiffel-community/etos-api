@@ -153,30 +153,30 @@ class SuiteValidator:  # pylint:disable=too-few-public-methods
 
     logger = logging.getLogger(__name__)
 
-    def __init__(self, params):
-        """Initialize validator.
+    async def _download_suite(self, test_suite_url):
+        """Attempt to download suite.
 
-        :param params: Parameter instance.
-        :type params: :obj:`etos_api.lib.params.Params`
+        :param test_suite_url: URL to test suite to download.
+        :type test_suite_url: str
+        :return: Downloaded test suite as JSON.
+        :rtype: list
         """
-        self.params = params
-
-    def _download_suite(self):
-        """Attempt to download suite."""
         try:
-            suite = requests.get(self.params.test_suite)
+            suite = requests.get(test_suite_url)
             suite.raise_for_status()
         except Exception as exception:  # pylint:disable=broad-except
             raise AssertionError(
-                "Unable to download suite from %r" % self.params.test_suite
+                "Unable to download suite from %r" % test_suite_url
             ) from exception
         return suite.json()
 
-    def validate(self):
+    async def validate(self, test_suite_url):
         """Validate the ETOS suite definition.
 
+        :param test_suite_url: URL to test suite that is being executed.
+        :type test_suite_url: str
         :raises ValidationError: If the suite did not validate.
         """
-        downloaded_suite = self._download_suite()
+        downloaded_suite = await self._download_suite(test_suite_url)
         for suite in downloaded_suite:
             assert Suite(**suite)

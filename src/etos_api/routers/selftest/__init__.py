@@ -13,23 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""JSON translator module."""
-import falcon
-
-# pylint: disable=too-few-public-methods
-# pylint: disable=no-self-use
-
-
-class JSONTranslator:
-    """Translate request media to JSON."""
-
-    def process_request(self, req, _):
-        """Process request."""
-        if req.content_length in (None, 0):
-            return
-
-        body = req.media
-        if not body:
-            raise falcon.HTTPBadRequest(
-                "Empty request body", "A valid JSON document is required."
-            )
+"""ETOS API selftest module."""
+from .router import ROUTER
+from . import schemas

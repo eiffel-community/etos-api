@@ -13,4 +13,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""ETOS API module."""
+"""Schemas for the environment provider endpoint."""
+from pydantic import BaseModel
+
+
+class ConfigureEnvironmentProviderRequest(BaseModel):
+    """Model for the configure environment provider API."""
+
+    suite_id: str
+    dataset: dict
+    execution_space_provider: str
+    iut_provider: str
+    log_area_provider: str

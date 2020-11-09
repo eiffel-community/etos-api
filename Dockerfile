@@ -6,9 +6,11 @@ RUN python3 setup.py bdist_wheel
 
 FROM python:3.9.0-slim-buster
 
+
 COPY --from=build /src/dist/*.whl /tmp
 # hadolint ignore=DL3013
-RUN pip install --no-cache-dir /tmp/*.whl
+
+RUN apt-get update && apt-get install -y gcc libc-dev --no-install-recommends && pip install --no-cache-dir /tmp/*.whl && apt-get purge -y --auto-remove gcc libc-dev
 
 RUN groupadd -r etos && useradd -r -s /bin/false -g etos etos
 USER etos
@@ -18,5 +20,4 @@ LABEL org.opencontainers.image.source=https://github.com/eiffel-community/etos-a
 LABEL org.opencontainers.image.authors=etos-maintainers@googlegroups.com
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
-ENV GUNICORN_CMD_ARGS="--name etos_api --bind 0.0.0.0:8080 --worker-class gevent --worker-connections 1000 --workers 5"
-ENTRYPOINT ["gunicorn", "etos_api.webserver:FALCON_APP"]
+ENTRYPOINT ["uvicorn", "etos_api.main:APP", "--host=0.0.0.0", "--port=8080"]

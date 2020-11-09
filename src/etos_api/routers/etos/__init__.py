@@ -13,6 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""ETOS API middleware module."""
-from .json_translator import JSONTranslator
-from .require_json import RequireJSON
+"""ETOS API etos module."""
+from .router import ROUTER
+from . import schemas
