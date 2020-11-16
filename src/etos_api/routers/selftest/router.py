@@ -15,12 +15,18 @@
 # limitations under the License.
 """ETOS API selftest router."""
 from starlette.responses import Response
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from etos_api.authentication.authenticate import validate
 
 ROUTER = APIRouter()
 
 
-@ROUTER.get("/selftest/ping", tags=["maintenance"], status_code=204)
+@ROUTER.get(
+    "/selftest/ping",
+    tags=["maintenance"],
+    status_code=204,
+    dependencies=[Depends(validate)],
+)
 async def ping():
     """Ping the ETOS service in order to check if it is up and running.
 
@@ -30,7 +36,12 @@ async def ping():
     return Response(status_code=204)
 
 
-@ROUTER.head("/selftest/ping", tags=["maintenance"], status_code=204)
+@ROUTER.head(
+    "/selftest/ping",
+    tags=["maintenance"],
+    status_code=204,
+    dependencies=[Depends(validate)],
+)
 async def head_ping():
     """Exists solely for backwards compatibility. DEPRECATED."""
     return Response(status_code=204)

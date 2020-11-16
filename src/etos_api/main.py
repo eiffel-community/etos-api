@@ -17,13 +17,14 @@
 from fastapi import FastAPI
 from starlette.responses import RedirectResponse
 from etos_api import routers
+from etos_api.authentication import authenticate
 
 
 APP = FastAPI()
 
 
 @APP.post("/")
-async def redirect_post_to_root():
+async def redirect_post_to_root():  # Auth is handled in etos router.
     """Redirect post requests to root to the start ETOS endpoint.
 
     :return: Redirect to etos.
@@ -34,7 +35,7 @@ async def redirect_post_to_root():
 
 
 @APP.head("/")
-async def redirect_head_to_root():
+async def redirect_head_to_root():  # Auth is handled in selftest router.
     """Redirect head requests to root to the selftest/ping endpoint.
 
     :return: Redirect to selftest/ping.
@@ -46,6 +47,7 @@ async def redirect_head_to_root():
     )  # 308 = Permanent Redirect
 
 
+APP.include_router(authenticate.ROUTER)
 APP.include_router(routers.etos.ROUTER)
 APP.include_router(routers.selftest.ROUTER)
 APP.include_router(routers.environment_provider.ROUTER)
