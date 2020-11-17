@@ -20,8 +20,6 @@ from fastapi import APIRouter, HTTPException
 from etos_lib import ETOS
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 
-from etos_api.library.graphql import GraphqlQueryHandler
-from etos_api.library.graphql_queries import ARTIFACT_QUERY
 from etos_api.library.validator import SuiteValidator
 from etos_api.library.utilities import sync_to_async, aclosing
 from etos_api.routers.environment_provider.router import configure_environment_provider
@@ -29,6 +27,7 @@ from etos_api.routers.environment_provider.schemas import (
     ConfigureEnvironmentProviderRequest,
 )
 from .schemas import StartEtosRequest, StartEtosResponse
+from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
 
@@ -47,8 +46,7 @@ async def start_etos(etos: StartEtosRequest):
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME"), "ETOS API")
     await sync_to_async(etos_library.config.rabbitmq_publisher_from_environment)
 
-    query_handler = GraphqlQueryHandler(etos_library)
-    artifact = await query_handler.execute(ARTIFACT_QUERY % etos.artifact_identity)
+    artifact = await wait_for_artifact_created(etos_library, etos.artifact_identity)
     if artifact is None:
         raise HTTPException(
             status_code=400,
@@ -57,7 +55,7 @@ async def start_etos(etos: StartEtosRequest):
     # There are assumptions here. Since "edges" list is already tested
     # and we know that the return from GraphQL must be 'node'.'meta'.'id'
     # if there are "edges", this is fine.
-    artifact_id = artifact["artifactCreated"]["edges"][0]["node"]["meta"]["id"]
+    artifact_id = artifact[0]["node"]["meta"]["id"]
 
     links = {"CAUSE": artifact_id}
     data = {

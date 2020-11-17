@@ -47,8 +47,6 @@ class GraphqlQueryHandler:  # pylint:disable=too-few-public-methods
             execute_timeout=self.etos.debug.default_wait_timeout,
         ) as session:
             try:
-                response = await session.execute(gql(query))
-                assert response["artifactCreated"]["edges"]
-                return response
-            except (asyncio.exceptions.TimeoutError, AssertionError):
+                return await session.execute(gql(query))
+            except asyncio.exceptions.TimeoutError:
                 return None
