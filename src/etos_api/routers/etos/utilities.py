@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utilities specific for the ETOS endpoint."""
+import asyncio
 import time
 from etos_api.library.graphql import GraphqlQueryHandler
 from etos_api.library.graphql_queries import ARTIFACT_QUERY
@@ -41,5 +42,5 @@ async def wait_for_artifact_created(etos_library, artifact_identity, timeout=30)
             return artifact["artifactCreated"]["edges"]
         except (AssertionError, KeyError):
             pass
-        time.sleep(2)
+        await asyncio.sleep(2)
     return None
