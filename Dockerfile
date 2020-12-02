@@ -10,7 +10,8 @@ FROM python:3.9.0-slim-buster
 COPY --from=build /src/dist/*.whl /tmp
 # hadolint ignore=DL3013
 
-RUN apt-get update && apt-get install -y gcc libc-dev --no-install-recommends && pip install --no-cache-dir /tmp/*.whl && apt-get purge -y --auto-remove gcc libc-dev
+# Installing an older version of pip as we wait for a real release of gql.
+RUN apt-get update && apt-get install -y gcc libc-dev --no-install-recommends && pip install --no-cache-dir pip==20.1.1 && pip install --no-cache-dir /tmp/*.whl && apt-get purge -y --auto-remove gcc libc-dev
 
 RUN groupadd -r etos && useradd -r -s /bin/false -g etos etos
 USER etos
