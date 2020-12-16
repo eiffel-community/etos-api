@@ -110,7 +110,7 @@ class Ldap:
         return username
 
     async def authorize(self, credentials):  # pylint:disable=too-many-return-statements
-        """Authorize user based with credentials.
+        """Authorize user based on credentials.
 
         :param credentials: Credentials for ldap authorization.
         :type credentials: :obj:`fastapi.security.HTTPBasicCredentials`

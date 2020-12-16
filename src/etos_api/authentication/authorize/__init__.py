@@ -15,8 +15,8 @@
 # limitations under the License.
 """Authorize the token requests.
 
-The backends in this package is for requesting new tokens using
-the user defined authenitication backend in this package.
+The 'authorize' package has all the supported backends for
+requesting authorization tokens.
 """
 from .ldap import Ldap
 from .no_authentication import NoAuthentication
