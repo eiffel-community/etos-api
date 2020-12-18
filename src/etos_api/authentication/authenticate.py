@@ -40,7 +40,7 @@ BACKEND = getattr(
 ALGORITHM = "HS256"
 ISSUER = CONFIG.issuer
 AUDIENCE = [
-    "etos-api/etos/",
+    "etos-api/etos",
     "etos-api/environment-provider/configure",
     "etos-api/selftest/ping",
 ]
@@ -57,7 +57,7 @@ async def get_audience(request: Request):
     :return: The audience for the endpoint based on path.
     :rtype: str
     """
-    return f"etos-api{request.scope.get('path')}"
+    return f"etos-api{request.scope.get('path')}".rstrip("/")
 
 
 async def generate_token(data: TokenConfig, expires_delta=None):
@@ -106,13 +106,19 @@ async def validate(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Signature expired",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer",
+                "ETOS-Authorization-Backend": CONFIG.authorization_backend.name
+            },
         ) from exception
     except (AssertionError, JWTError) as exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer",
+                "ETOS-Authorization-Backend": CONFIG.authorization_backend.name
+            },
         ) from exception
     async with Database(CONFIG) as database:
         database_user = await database.get(username)
@@ -120,7 +126,10 @@ async def validate(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="No user connected to token.",
-                headers={"WWW-Authenticate": "Bearer"},
+                headers={
+                    "WWW-Authenticate": "Bearer",
+                    "ETOS-Authorization-Backend": CONFIG.authorization_backend.name
+                },
             )
         return User(**database_user)
 
@@ -134,7 +143,7 @@ async def get_token(user):
     :rtype: str
     """
     config = TokenConfig(sub=user.username, aud=AUDIENCE, iss=ISSUER)
-    generated_token = await generate_token(config, timedelta(minutes=1))
+    generated_token = await generate_token(config, timedelta(days=1))
     return Token(access_token=generated_token, token_type="bearer")
 
 
