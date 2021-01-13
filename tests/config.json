@@ -1,0 +1,8 @@
+{
+    "secret": "tests/dummysecret",
+    "issuer": "http://etos-api.com/token",
+    "authorization_backend": {
+        "name": "NoAuthentication",
+        "config": {}
+    }
+}

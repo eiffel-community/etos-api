@@ -18,16 +18,20 @@ import asyncio
 import os
 import time
 import aiohttp
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from etos_lib import ETOS
 
+from etos_api.authentication.authenticate import validate
 from .schemas import ConfigureEnvironmentProviderRequest
 
 ROUTER = APIRouter()
 
 
 @ROUTER.post(
-    "/environment_provider/configure", tags=["environment_provider"], status_code=204
+    "/environment_provider/configure",
+    tags=["environment_provider"],
+    status_code=204,
+    dependencies=[Depends(validate)],
 )
 async def configure_environment_provider(
     environment: ConfigureEnvironmentProviderRequest,

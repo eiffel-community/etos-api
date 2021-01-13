@@ -1,0 +1,8 @@
+{
+    "secret": "",
+    "issuer": "http://etos-api.com/token",
+    "authorization_backend": {
+        "name": "NoAuthentication",
+        "config": {}
+    }
+}

@@ -16,7 +16,7 @@
 """ETOS API router."""
 from uuid import uuid4
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from etos_lib import ETOS
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 
@@ -26,13 +26,19 @@ from etos_api.routers.environment_provider.router import configure_environment_p
 from etos_api.routers.environment_provider.schemas import (
     ConfigureEnvironmentProviderRequest,
 )
+from etos_api.authentication.authenticate import validate
 from .schemas import StartEtosRequest, StartEtosResponse
 from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
 
 
-@ROUTER.post("/etos", tags=["etos"], response_model=StartEtosResponse)
+@ROUTER.post(
+    "/etos",
+    tags=["etos"],
+    response_model=StartEtosResponse,
+    dependencies=[Depends(validate)],
+)
 async def start_etos(etos: StartEtosRequest):
     """Start ETOS execution on post.
 
