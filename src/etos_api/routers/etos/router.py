@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API router."""
+import logging
 from uuid import uuid4
 import os
 from fastapi import APIRouter, HTTPException
+from starlette.responses import Response
 from etos_lib import ETOS
+from etos_lib.logging.logger import FORMAT_CONFIG
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 
 from etos_api.library.validator import SuiteValidator
@@ -30,6 +33,8 @@ from .schemas import StartEtosRequest, StartEtosResponse
 from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
+LOGGER = logging.getLogger(__name__)
+logging.getLogger("pika").setLevel(logging.WARNING)
 
 
 @ROUTER.post("/etos", tags=["etos"], response_model=StartEtosResponse)
@@ -41,17 +46,35 @@ async def start_etos(etos: StartEtosRequest):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    await SuiteValidator().validate(etos.test_suite_url)
+    tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
+    LOGGER.identifier.set(tercc.meta.event_id)
+
+    LOGGER.info("Validating test suite.")
+    try:
+        await SuiteValidator().validate(etos.test_suite_url)
+    except AssertionError as exception:
+        LOGGER.error("Test suite validation failed!")
+        LOGGER.error(exception)
+        return Response(status_code=400)
+    LOGGER.info("Test suite validated.")
 
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME"), "ETOS API")
     await sync_to_async(etos_library.config.rabbitmq_publisher_from_environment)
 
-    artifact = await wait_for_artifact_created(etos_library, etos.artifact_identity)
+    LOGGER.info("Get artifact created %r", etos.artifact_identity)
+    try:
+        artifact = await wait_for_artifact_created(etos_library, etos.artifact_identity)
+    except Exception as exception:  # pylint:disable=broad-except
+        LOGGER.critical(exception)
+        raise HTTPException(
+            status_code=400, detail=f"Could not connect to GraphQL. {exception}"
+        ) from exception
     if artifact is None:
         raise HTTPException(
             status_code=400,
             detail=f"Unable to find artifact with identity '{etos.artifact_identity}'",
         )
+    LOGGER.info("Found artifact created %r", artifact)
     # There are assumptions here. Since "edges" list is already tested
     # and we know that the return from GraphQL must be 'node'.'meta'.'id'
     # if there are "edges", this is fine.
@@ -62,7 +85,6 @@ async def start_etos(etos: StartEtosRequest):
         "selectionStrategy": {"tracker": "Suite Builder", "id": str(uuid4())},
         "batchesUri": etos.test_suite_url,
     }
-    tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
     request = ConfigureEnvironmentProviderRequest(
         suite_id=tercc.meta.event_id,
         dataset=etos.dataset,
@@ -70,12 +92,25 @@ async def start_etos(etos: StartEtosRequest):
         iut_provider=etos.iut_provider,
         log_area_provider=etos.log_area_provider,
     )
-    await configure_environment_provider(request)
+    try:
+        await configure_environment_provider(request)
+    except Exception as exception:  # pylint:disable=broad-except
+        LOGGER.critical(exception)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not configure environment provider. {exception}",
+        ) from exception
+    LOGGER.info("Environment provider configured.")
 
+    LOGGER.info("Start event publisher.")
     await sync_to_async(etos_library.start_publisher)
+    LOGGER.info("Event published started successfully.")
+    LOGGER.info("Publish TERCC event.")
     async with aclosing(etos_library.publisher):
         event = etos_library.events.send(tercc, links, data)
+    LOGGER.info("Event published.")
 
+    LOGGER.info("ETOS triggered successfully.")
     return {
         "tercc": event.meta.event_id,
         "event_repository": etos_library.debug.graphql_server,

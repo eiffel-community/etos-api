@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -14,12 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API."""
+import logging
 from fastapi import FastAPI
 from starlette.responses import RedirectResponse
 from etos_api import routers
 
 
 APP = FastAPI()
+LOGGER = logging.getLogger(__name__)
 
 
 @APP.post("/")
@@ -29,6 +31,7 @@ async def redirect_post_to_root():
     :return: Redirect to etos.
     :rtype: :obj:`starlette.responses.RedirectResponse`
     """
+    LOGGER.debug("Redirecting post requests to the root endpoint to '/etos'")
     # DEPRECATED. Exists only for backwards compatibility.
     return RedirectResponse(url="/etos", status_code=308)  # 308 = Permanent Redirect
 
@@ -40,6 +43,7 @@ async def redirect_head_to_root():
     :return: Redirect to selftest/ping.
     :rtype: :obj:`starlette.responses.RedirectResponse`
     """
+    LOGGER.debug("Redirecting head requests to the root endpoint to '/sefltest/ping'")
     # DEPRECATED. Exists only for backwards compatibility.
     return RedirectResponse(
         url="/selftest/ping", status_code=308

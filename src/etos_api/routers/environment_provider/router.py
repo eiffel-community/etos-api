@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Environment provider proxy API."""
+import logging
 import asyncio
 import os
 import time
@@ -24,6 +25,7 @@ from etos_lib import ETOS
 from .schemas import ConfigureEnvironmentProviderRequest
 
 ROUTER = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
 
 @ROUTER.post(
@@ -37,9 +39,12 @@ async def configure_environment_provider(
     :param environment: Environment to configure.
     :type environment: :obj:`etos_api.routers.etos.schemas.ConfigureEnvironmentProviderRequest`
     """
+    LOGGER.identifier.set(environment.suite_id)
+    LOGGER.info("Configuring environment provider using %r", environment)
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME"), "ETOS API")
 
     end_time = time.time() + etos_library.debug.default_http_timeout
+    LOGGER.debug("HTTP Timeout: %r", etos_library.debug.default_http_timeout)
     async with aiohttp.ClientSession() as session:
         while time.time() < end_time:
             try:
@@ -54,6 +59,11 @@ async def configure_environment_provider(
                     assert 200 <= response.status < 400
                 break
             except AssertionError:
+                LOGGER.warning(
+                    "Configuration request failed: %r, %r",
+                    response.status,
+                    response.reason,
+                )
                 await asyncio.sleep(2)
         else:
             raise HTTPException(

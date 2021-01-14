@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -14,3 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API module."""
+import os
+from importlib.metadata import version, PackageNotFoundError
+from etos_api.library.context_logging import ContextLogging
+from etos_lib.logging.logger import setup_logging
+
+try:
+    VERSION = version("environment_provider")
+except PackageNotFoundError:
+    VERSION = "Unknown"
+
+DEV = os.getenv("DEV", "false").lower() == "true"
+ENVIRONMENT = "development" if DEV else "production"
+setup_logging("ETOS API", VERSION, ENVIRONMENT)

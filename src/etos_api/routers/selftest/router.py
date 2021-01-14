@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -14,10 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API selftest router."""
+import logging
 from starlette.responses import Response
 from fastapi import APIRouter
 
 ROUTER = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
 
 @ROUTER.get("/selftest/ping", tags=["maintenance"], status_code=204)
@@ -33,4 +35,5 @@ async def ping():
 @ROUTER.head("/selftest/ping", tags=["maintenance"], status_code=204)
 async def head_ping():
     """Exists solely for backwards compatibility. DEPRECATED."""
+    LOGGER.warning("DEPRECATED HEAD request to ping received!")
     return Response(status_code=204)

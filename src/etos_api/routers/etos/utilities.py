@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utilities specific for the ETOS endpoint."""
+import logging
 import asyncio
 import time
 from etos_api.library.graphql import GraphqlQueryHandler
 from etos_api.library.graphql_queries import ARTIFACT_QUERY
+
+LOGGER = logging.getLogger(__name__)
 
 
 async def wait_for_artifact_created(etos_library, artifact_identity, timeout=30):
@@ -34,6 +37,7 @@ async def wait_for_artifact_created(etos_library, artifact_identity, timeout=30)
     """
     timeout = time.time() + timeout
     query_handler = GraphqlQueryHandler(etos_library)
+    LOGGER.debug("Wait for artifact created event.")
     while time.time() < timeout:
         try:
             artifact = await query_handler.execute(ARTIFACT_QUERY % artifact_identity)
@@ -41,6 +45,7 @@ async def wait_for_artifact_created(etos_library, artifact_identity, timeout=30)
             assert artifact["artifactCreated"]["edges"]
             return artifact["artifactCreated"]["edges"]
         except (AssertionError, KeyError):
-            pass
+            LOGGER.warning("Artifact created not ready yet")
         await asyncio.sleep(2)
+    LOGGER.error("Artifact %r not found.", artifact_identity)
     return None
