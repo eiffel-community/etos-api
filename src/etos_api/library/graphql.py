@@ -31,6 +31,7 @@ class GraphqlQueryHandler:  # pylint:disable=too-few-public-methods
         self.transport = AIOHTTPTransport(
             url=self.etos.debug.graphql_server,
             timeout=self.etos.debug.default_http_timeout,
+            client_session_args={"trust_env": True}
         )
 
     async def execute(self, query):
