@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -15,11 +15,31 @@
 # limitations under the License.
 """Event repository queries."""
 
-ARTIFACT_QUERY = """
+ARTIFACT_IDENTITY_QUERY = """
 {
   artifactCreated(search: "{'data.identity': {'$regex': '%s'}}", last: 1) {
     edges {
       node {
+        data {
+          identity
+        }
+        meta {
+          id
+        }
+      }
+    }
+  }
+}
+"""
+
+VERIFY_ARTIFACT_ID_EXISTS = """
+{
+  artifactCreated(search: "{'meta.id': '%s'}", last: 1) {
+    edges {
+      node {
+        data {
+          identity
+        }
         meta {
           id
         }

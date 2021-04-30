@@ -61,9 +61,13 @@ async def start_etos(etos: StartEtosRequest):
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME"), "ETOS API")
     await sync_to_async(etos_library.config.rabbitmq_publisher_from_environment)
 
-    LOGGER.info("Get artifact created %r", etos.artifact_identity)
+    LOGGER.info(
+        "Get artifact created %r", (etos.artifact_identity or str(etos.artifact_id))
+    )
     try:
-        artifact = await wait_for_artifact_created(etos_library, etos.artifact_identity)
+        artifact = await wait_for_artifact_created(
+            etos_library, etos.artifact_identity, etos.artifact_id
+        )
     except Exception as exception:  # pylint:disable=broad-except
         LOGGER.critical(exception)
         raise HTTPException(
@@ -72,13 +76,15 @@ async def start_etos(etos: StartEtosRequest):
     if artifact is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Unable to find artifact with identity '{etos.artifact_identity}'",
+            detail=f"Unable to find artifact with identity '{etos.artifact_identity or str(etos.artifact_id)}'",
         )
     LOGGER.info("Found artifact created %r", artifact)
     # There are assumptions here. Since "edges" list is already tested
     # and we know that the return from GraphQL must be 'node'.'meta'.'id'
     # if there are "edges", this is fine.
+    # Same goes for 'data'.'identity'.
     artifact_id = artifact[0]["node"]["meta"]["id"]
+    identity = artifact[0]["node"]["data"]["identity"]
 
     links = {"CAUSE": artifact_id}
     data = {
@@ -113,5 +119,7 @@ async def start_etos(etos: StartEtosRequest):
     LOGGER.info("ETOS triggered successfully.")
     return {
         "tercc": event.meta.event_id,
+        "artifact_id": artifact_id,
+        "artifact_identity": identity,
         "event_repository": etos_library.debug.graphql_server,
     }

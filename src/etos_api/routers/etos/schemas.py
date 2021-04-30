@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright 2020-2021 Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -17,7 +17,7 @@
 import os
 from uuid import UUID
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
 # There's a bug with pylint detecting subscription on Optional objects as problematic.
 # https://github.com/PyCQA/pylint/issues/3882
@@ -27,7 +27,8 @@ from pydantic import BaseModel
 class StartEtosRequest(BaseModel):
     """Request model for the ETOS start API."""
 
-    artifact_identity: str
+    artifact_identity: Optional[str]
+    artifact_id: Optional[UUID]
     test_suite_url: str
     dataset: Optional[dict] = {}
     execution_space_provider: Optional[str] = os.getenv(
@@ -36,9 +37,24 @@ class StartEtosRequest(BaseModel):
     iut_provider: Optional[str] = os.getenv("DEFAULT_IUT_PROVIDER", "default")
     log_area_provider: Optional[str] = os.getenv("DEFAULT_LOG_AREA_PROVIDER", "default")
 
+    @validator("artifact_id", always=True)
+    def validate_id_or_identity(cls, v, values):
+        """Validate that at least one and only one of id and identity are set."""
+        if values.get("artifact_identity") is None and not v:
+            raise ValueError(
+                "At least one of 'artifact_identity' or 'artifact_id' is required."
+            )
+        if values.get("artifact_identity") is not None and v:
+            raise ValueError(
+                "Only one of 'artifact_identity' or 'artifact_id' is required."
+            )
+        return v
+
 
 class StartEtosResponse(BaseModel):
     """Response model for the ETOS start API."""
 
     event_repository: str
     tercc: UUID
+    artifact_id: UUID
+    artifact_identity: str
