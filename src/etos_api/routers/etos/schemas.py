@@ -38,17 +38,25 @@ class StartEtosRequest(BaseModel):
     log_area_provider: Optional[str] = os.getenv("DEFAULT_LOG_AREA_PROVIDER", "default")
 
     @validator("artifact_id", always=True)
-    def validate_id_or_identity(cls, v, values):
-        """Validate that at least one and only one of id and identity are set."""
-        if values.get("artifact_identity") is None and not v:
+    def validate_id_or_identity(cls, artifact_id, values):
+        """Validate that at least one and only one of id and identity are set.
+
+        :param artifact_id: The value of 'artifact_id' to validate.
+        :value artifact_id: str or None
+        :param values: The list of values set on the model.
+        :type values: list
+        :return: The value of artifact_id.
+        :rtype: str or None
+        """
+        if values.get("artifact_identity") is None and not artifact_id:
             raise ValueError(
                 "At least one of 'artifact_identity' or 'artifact_id' is required."
             )
-        if values.get("artifact_identity") is not None and v:
+        if values.get("artifact_identity") is not None and artifact_id:
             raise ValueError(
                 "Only one of 'artifact_identity' or 'artifact_id' is required."
             )
-        return v
+        return artifact_id
 
 
 class StartEtosResponse(BaseModel):

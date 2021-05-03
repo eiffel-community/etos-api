@@ -47,20 +47,22 @@ async def wait_for_artifact_created(
     if artifact_id is not None:
         LOGGER.info("Verify that artifact ID %r exists.", artifact_id)
         query = VERIFY_ARTIFACT_ID_EXISTS
-    else:
+    elif artifact_identity is not None:
         LOGGER.info("Getting artifact from packageURL %r", artifact_identity)
         query = ARTIFACT_IDENTITY_QUERY
-    identity = artifact_identity or str(artifact_id)
+    else:
+        raise ValueError("'artifact_id' and 'artifact_identity' are both None!")
+    artifact_identifier = artifact_identity or str(artifact_id)
 
     LOGGER.debug("Wait for artifact created event.")
     while time.time() < timeout:
         try:
-            artifact = await query_handler.execute(query % identity)
-            assert artifact is not None
-            assert artifact["artifactCreated"]["edges"]
-            return artifact["artifactCreated"]["edges"]
+            artifacts = await query_handler.execute(query % artifact_identifier)
+            assert artifacts is not None
+            assert artifacts["artifactCreated"]["edges"]
+            return artifacts["artifactCreated"]["edges"]
         except (AssertionError, KeyError):
             LOGGER.warning("Artifact created not ready yet")
         await asyncio.sleep(2)
-    LOGGER.error("Artifact %r not found.", identity)
+    LOGGER.error("Artifact %r not found.", artifact_identifier)
     return None
