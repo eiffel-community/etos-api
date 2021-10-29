@@ -50,6 +50,9 @@ async def wait_for_artifact_created(
     elif artifact_identity is not None:
         LOGGER.info("Getting artifact from packageURL %r", artifact_identity)
         query = ARTIFACT_IDENTITY_QUERY
+        if artifact_identity.startswith("pkg:"):
+            # This makes the '$regex' query to the event repository more efficient.
+            artifact_identity = f"^{artifact_identity}"
     else:
         raise ValueError("'artifact_id' and 'artifact_identity' are both None!")
     artifact_identifier = artifact_identity or str(artifact_id)
