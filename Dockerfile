@@ -13,7 +13,7 @@ COPY --from=build /src/dist/*.whl /tmp
 # Installing an older version of pip as we wait for a real release of gql.
 RUN apt-get update && apt-get install -y gcc libc-dev --no-install-recommends && pip install --no-cache-dir pip==20.1.1 && pip install --no-cache-dir /tmp/*.whl && apt-get purge -y --auto-remove gcc libc-dev
 
-RUN groupadd -r etos && useradd -r -s /bin/false -g etos etos
+RUN groupadd -r etos && useradd -r -m -s /bin/false -g etos etos
 USER etos
 EXPOSE 8080
 
