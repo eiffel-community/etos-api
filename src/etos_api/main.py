@@ -14,14 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API."""
-import os
 import logging
 from fastapi import FastAPI
 from starlette.responses import RedirectResponse
 from etos_api import routers
 
 
-APP = FastAPI(root_path=os.getenv("ROOT_PATH", ""))
+APP = FastAPI()
 LOGGER = logging.getLogger(__name__)
 
 
