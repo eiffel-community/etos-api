@@ -10,4 +10,3 @@ internal/**/**/test
 testdata/
 test/testdata/
 test/mock_*
-internal/query/query.go
