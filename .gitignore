@@ -1,0 +1,13 @@
+.env
+bin
+!bin/README.md
+data/
+vendor/
+.vscode/
+pkg/**/**/test
+cmd/**/**/test
+internal/**/**/test
+testdata/
+test/testdata/
+test/mock_*
+internal/query/query.go
