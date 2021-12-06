@@ -1,0 +1,16 @@
+version: "3.7"
+services:
+  apis:
+    build:
+      context: .
+      dockerfile: ./deploy/etos-api/Dockerfile.dev
+      args:
+        http_proxy: "${http_proxy}"
+        https_proxy: "${https_proxy}"
+    volumes:
+      - ./:/app
+    ports:
+      - 9090:9090
+    env_file:
+      - ./configs/development.env
+    entrypoint: ["/bin/bash", "./scripts/entrypoint.sh"]
