@@ -68,7 +68,9 @@ func main() {
 	}()
 
 	<-done
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// TODO: This timeout shall be the same as the request timeout when that
+	// gets implemented.
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
 	if err := srv.Close(ctx); err != nil {
