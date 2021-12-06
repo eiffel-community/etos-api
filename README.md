@@ -10,7 +10,7 @@ ETOS (Eiffel Test Orchestration System) API
 API for starting ETOS executions and for getting extra information about the system.
 
 
-## Installation
+## Build
 
 ### Docker
 
