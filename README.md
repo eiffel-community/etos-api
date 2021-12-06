@@ -12,8 +12,21 @@ API for starting ETOS executions and for getting extra information about the sys
 
 ## Installation
 
-   pip install .
+### Docker
 
+   docker run registry.nordix.org/eiffel/etos-api
+
+### Running a development server locally
+
+   make start
+
+### Building a local executable
+
+   make build
+
+### Running tests
+
+   make check
 
 ## Contribute
 
