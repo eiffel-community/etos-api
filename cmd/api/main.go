@@ -26,9 +26,9 @@ import (
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	"github.com/eiffel-community/etos-api/internal/server"
+	"github.com/eiffel-community/etos-api/pkg/application"
+	"github.com/eiffel-community/etos-api/pkg/v1alpha1"
 	"github.com/sirupsen/logrus"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 // GitSummary contains "git describe" output and is automatically
@@ -38,7 +38,6 @@ var GitSummary = "(unknown)"
 // main sets up logging and starts up the webserver.
 func main() {
 	cfg := config.Get()
-	handler := httprouter.New()
 	ctx := context.Background()
 
 	logger, err := logging.Setup(cfg)
@@ -55,6 +54,10 @@ func main() {
 		"application": "etos-api",
 		"version":     GitSummary,
 	})
+
+	log.Info("Loading v1alpha1 routes")
+	v1alpha1App := v1alpha1.New(cfg, log, ctx)
+	handler := application.New(v1alpha1App)
 
 	srv := server.NewWebserver(cfg, log, handler)
 
