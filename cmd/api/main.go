@@ -21,7 +21,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/logging"
@@ -71,9 +70,8 @@ func main() {
 	}()
 
 	<-done
-	// TODO: This timeout shall be the same as the request timeout when that
-	// gets implemented.
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout())
 	defer cancel()
 
 	if err := srv.Close(ctx); err != nil {

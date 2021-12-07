@@ -19,6 +19,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Config interface for retreiving configuration options.
@@ -26,24 +29,35 @@ type Config interface {
 	APIHost() string
 	LogLevel() string
 	LogFilePath() string
+	EventRepositoryHost() string
+	Timeout() time.Duration
 }
 
 // cfg implements the Config interface.
 type cfg struct {
-	apiHost     string
-	apiPort     string
-	logLevel    string
-	logFilePath string
+	apiHost             string
+	apiPort             string
+	logLevel            string
+	logFilePath         string
+	eventRepositoryHost string
+	timeout             time.Duration
 }
 
 // Get creates a config interface based on input parameters or environment variables.
 func Get() Config {
 	var conf cfg
 
+	defaultTimeout, err := time.ParseDuration(EnvOrDefault("REQUEST_TIMEOUT", "1m"))
+	if err != nil {
+		logrus.Panic(err)
+	}
+
 	flag.StringVar(&conf.apiHost, "address", EnvOrDefault("API_HOST", "127.0.0.1"), "Address to serve API on")
 	flag.StringVar(&conf.apiPort, "port", EnvOrDefault("API_PORT", "8080"), "Port to serve API on")
 	flag.StringVar(&conf.logLevel, "loglevel", EnvOrDefault("LOGLEVEL", "INFO"), "Log level (TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, PANIC).")
 	flag.StringVar(&conf.logFilePath, "logfilepath", os.Getenv("LOG_FILE_PATH"), "Path, including filename, for the log files to create.")
+	flag.StringVar(&conf.eventRepositoryHost, "eventrepository", os.Getenv("ETOS_GRAPHQL_SERVER"), "Host to the GraphQL server to use for event lookup.")
+	flag.DurationVar(&conf.timeout, "timeout", defaultTimeout, "Maximum timeout for requests to ETOS API.")
 
 	flag.Parse()
 	return &conf
@@ -62,6 +76,17 @@ func (c *cfg) LogLevel() string {
 // LogFilePath returns the path to where log files should be stored, including filename.
 func (c *cfg) LogFilePath() string {
 	return c.logFilePath
+}
+
+// EventRepositoryHost returns the host to use for event lookups.
+func (c *cfg) EventRepositoryHost() string {
+	// TODO: Validate that this is set
+	return c.eventRepositoryHost
+}
+
+// Timeout returns the request timeout for starting ETOS.
+func (c *cfg) Timeout() time.Duration {
+	return c.timeout
 }
 
 // EnvOrDefault will look up key in environment variables and return if it exists, else return the fallback value.

@@ -26,7 +26,7 @@ import (
 
 // TestLoggingSetup tests that it is possible to setup logging without a filehook.
 func TestLoggingSetup(t *testing.T) {
-	cfg := testconfig.Get("127.0.0.1", "8080", "INFO", "")
+	cfg := testconfig.Get("127.0.0.1", "8080", "INFO", "", "", "1m")
 	log, err := Setup(cfg)
 	assert.Nil(t, err)
 	assert.Nil(t, log.Hooks[logrus.InfoLevel])
@@ -34,7 +34,7 @@ func TestLoggingSetup(t *testing.T) {
 
 // TestLoggingSetupFileHook tests that it is possible to setup logging with a filehook.
 func TestLoggingSetupFileHook(t *testing.T) {
-	cfg := testconfig.Get("127.0.0.1", "8080", "INFO", "testdata/logs.json")
+	cfg := testconfig.Get("127.0.0.1", "8080", "INFO", "testdata/logs.json", "", "1m")
 	log, err := Setup(cfg)
 	assert.Nil(t, err)
 	assert.NotNil(t, log.Hooks[logrus.InfoLevel])
@@ -42,7 +42,7 @@ func TestLoggingSetupFileHook(t *testing.T) {
 
 // TestLoggingSetupBadLogLevel shall return an error if loglevel is not parseable.
 func TestLoggingSetupBadLogLevel(t *testing.T) {
-	cfg := testconfig.Get("127.0.0.1", "8080", "NOTALOGLEVEL", "")
+	cfg := testconfig.Get("127.0.0.1", "8080", "NOTALOGLEVEL", "", "", "1m")
 	_, err := Setup(cfg)
 	assert.Error(t, err)
 }

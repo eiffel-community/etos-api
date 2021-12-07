@@ -18,6 +18,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -28,10 +29,16 @@ func TestGet(t *testing.T) {
 	serverHost := "127.0.0.1"
 	logLevel := "DEBUG"
 	logFilePath := "path/to/a/file"
+	erHost := "http://er/graphql"
+	timeoutStr := "1m"
 	os.Setenv("SERVER_HOST", serverHost)
 	os.Setenv("API_PORT", port)
 	os.Setenv("LOGLEVEL", logLevel)
 	os.Setenv("LOG_FILE_PATH", logFilePath)
+	os.Setenv("ETOS_GRAPHQL_SERVER", erHost)
+	os.Setenv("REQUEST_TIMEOUT", timeoutStr)
+
+	timeout, _ := time.ParseDuration(timeoutStr)
 
 	conf, ok := Get().(*cfg)
 	assert.Truef(t, ok, "cfg returned from get is not a config interface")
@@ -39,6 +46,8 @@ func TestGet(t *testing.T) {
 	assert.Equal(t, serverHost, conf.apiHost)
 	assert.Equal(t, logLevel, conf.logLevel)
 	assert.Equal(t, logFilePath, conf.logFilePath)
+	assert.Equal(t, erHost, conf.eventRepositoryHost)
+	assert.Equal(t, timeout, conf.timeout)
 }
 
 type getter func() string
@@ -46,10 +55,11 @@ type getter func() string
 // Test that the getters in the Cfg struct return the values from the struct.
 func TestGetters(t *testing.T) {
 	conf := &cfg{
-		apiHost:     "127.0.0.1",
-		apiPort:     "8080",
-		logLevel:    "TRACE",
-		logFilePath: "a/file/path.json",
+		apiHost:             "127.0.0.1",
+		apiPort:             "8080",
+		logLevel:            "TRACE",
+		logFilePath:         "a/file/path.json",
+		eventRepositoryHost: "http://er/graphql",
 	}
 	tests := []struct {
 		name     string
@@ -60,10 +70,21 @@ func TestGetters(t *testing.T) {
 		{name: "APIPort", cfg: conf, function: conf.APIHost, value: conf.apiHost + ":" + conf.apiPort},
 		{name: "LogLevel", cfg: conf, function: conf.LogLevel, value: conf.logLevel},
 		{name: "LogFilePath", cfg: conf, function: conf.LogFilePath, value: conf.logFilePath},
+		{name: "EventRepositoryHost", cfg: conf, function: conf.EventRepositoryHost, value: conf.eventRepositoryHost},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			assert.Equal(t, testCase.value, testCase.function())
 		})
 	}
+}
+
+// TestTimeoutGetter tests the getter for Timeout. Similar to TestGetters, but since
+// Timeout is not a "func() string" we separate its test.
+func TestTimeoutGetter(t *testing.T) {
+	timeout, _ := time.ParseDuration("1m")
+	conf := &cfg{
+		timeout: timeout,
+	}
+	assert.Equal(t, conf.timeout, conf.Timeout())
 }
