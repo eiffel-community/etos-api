@@ -13,22 +13,30 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package server
+package v1alpha1
 
 import (
+	"fmt"
 	"net/http"
-	"testing"
-
-	"github.com/eiffel-community/etos-api/test/testconfig"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 )
 
-// TestNewWebserver tests that a new webserver can be created and that it
-// implements the Server interface
-func TestNewWebserver(t *testing.T) {
-	log := &logrus.Entry{}
-	cfg := testconfig.Get("", "", "", "", "", "1m")
-	webserver := NewWebserver(cfg, log, http.Handler(nil))
-	assert.Implements(t, (*Server)(nil), webserver)
+// HTTPError is a wrapper around a standard error but also adding HTTP status code.
+type HTTPError struct {
+	Original error
+	Message  string
+	Code     int
+}
+
+// NewHTTPError creates a new HTTPError wrapping another error with it.
+func NewHTTPError(e error, httpCode int) *HTTPError {
+	return &HTTPError{
+		Original: e,
+		Message:  e.Error(),
+		Code:     httpCode,
+	}
+}
+
+// Error is the string representation of HTTPError.
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("(%d: %s): %s", e.Code, http.StatusText(e.Code), e.Message)
 }

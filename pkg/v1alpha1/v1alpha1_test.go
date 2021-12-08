@@ -31,7 +31,7 @@ import (
 func TestNew(t *testing.T) {
 	ctx := context.Background()
 	log := &logrus.Entry{}
-	cfg := testconfig.Get("", "", "", "")
+	cfg := testconfig.Get("", "", "", "", "", "1m")
 	v1alpha1 := New(cfg, log, ctx)
 	assert.Implements(t, (*application.Application)(nil), v1alpha1)
 }

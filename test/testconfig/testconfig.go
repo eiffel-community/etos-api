@@ -17,23 +17,33 @@ package testconfig
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
+	"github.com/sirupsen/logrus"
 )
 
 type cfg struct {
-	apiHost     string
-	apiPort     string
-	logLevel    string
-	logFilePath string
+	apiHost             string
+	apiPort             string
+	logLevel            string
+	logFilePath         string
+	eventRepositoryHost string
+	timeout             time.Duration
 }
 
-func Get(apiHost, apiPort, logLevel, logFilePath string) config.Config {
+func Get(apiHost, apiPort, logLevel, logFilePath, erHost, timeoutStr string) config.Config {
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		logrus.Panic("timeout could not be parsed")
+	}
 	return &cfg{
-		apiHost:     apiHost,
-		apiPort:     apiPort,
-		logLevel:    logLevel,
-		logFilePath: logFilePath,
+		apiHost:             apiHost,
+		apiPort:             apiPort,
+		logLevel:            logLevel,
+		logFilePath:         logFilePath,
+		eventRepositoryHost: erHost,
+		timeout:             timeout,
 	}
 }
 
@@ -47,4 +57,12 @@ func (c *cfg) LogLevel() string {
 
 func (c *cfg) LogFilePath() string {
 	return c.logFilePath
+}
+
+func (c *cfg) EventRepositoryHost() string {
+	return c.eventRepositoryHost
+}
+
+func (c *cfg) Timeout() time.Duration {
+	return c.timeout
 }
