@@ -18,13 +18,16 @@ package v1alpha1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/eiffel-community/eiffelevents-sdk-go"
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/responses"
 	"github.com/eiffel-community/etos-api/pkg/application"
+	"github.com/eiffel-community/etos-api/pkg/v1alpha1/suite"
 
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -32,25 +35,32 @@ import (
 )
 
 type V1Alpha1Application struct {
-	logger *logrus.Entry
-	cfg    config.Config
+	logger    *logrus.Entry
+	cfg       config.Config
+	validator *suite.SuiteValidator
 }
 
 type V1Alpha1Handler struct {
-	logger *logrus.Entry
-	cfg    config.Config
+	logger    *logrus.Entry
+	cfg       config.Config
+	validator *suite.SuiteValidator
 }
 
 func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.Application {
+	validator, err := suite.New()
+	if err != nil {
+		log.Panic(err)
+	}
 	return &V1Alpha1Application{
-		logger: log,
-		cfg:    cfg,
+		logger:    log,
+		cfg:       cfg,
+		validator: validator,
 	}
 }
 
 // LoadRoutes loads all the v1alpha1 routes.
 func (a *V1Alpha1Application) LoadRoutes(router *httprouter.Router) {
-	handler := &V1Alpha1Handler{a.logger, a.cfg}
+	handler := &V1Alpha1Handler{a.logger, a.cfg, a.validator}
 	router.GET("/v1alpha1/selftest/ping", handler.Selftest)
 	router.POST("/v1alpha1/etos", handler.timeoutHandler(handler.identifierHandler(handler.requestTimeHandler(handler.StartETOS))))
 }
@@ -69,6 +79,14 @@ type StartRequest struct {
 	ExecutionSpaceProvider string                 `json:"execution_space_provider,omitempty"`
 	LogAreaProvider        string                 `json:"log_area_provider,omitempty"`
 	IUTProvider            string                 `json:"iut_provider,omitempty"`
+	Artifact               eiffelevents.ArtifactCreatedV3
+}
+
+type StartResponse struct {
+	EventRepository  string `json:"event_repository"`
+	TERCC            string `json:"tercc"`
+	ArtifactID       string `json:"artifact_id"`
+	ArtifactIdentity string `json:"artifact_identity"`
 }
 
 // StartETOS checks if the artifact IUT exists, the test suite validates, configures the
@@ -76,26 +94,59 @@ type StartRequest struct {
 func (h *V1Alpha1Handler) StartETOS(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier := ps.ByName("identifier")
 	logger := h.logger.WithField("identifier", identifier)
+	var response StartResponse
 	ctx := r.Context()
 
-	var request StartRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		responses.RespondWithError(w, http.StatusBadRequest, fmt.Sprintf("unable to decode post body %+v", err))
+	request, err := h.verifyInput(ctx, logger, r)
+	if err != nil {
+		logger.Error(err.Error())
+		sendError(w, err)
 		return
+	}
+
+	response = StartResponse{
+		EventRepository:  h.cfg.EventRepositoryHost(),
+		TERCC:            identifier,
+		ArtifactID:       request.Artifact.Meta.ID,
+		ArtifactIdentity: request.Artifact.Data.Identity,
+	}
+
+	responses.RespondWithJSON(w, http.StatusOK, response)
+}
+
+// verifyInput verifies that the required request parameters exist. It verifies that the
+// IUT artifact exists and validates that the test suite works with ETOS.
+func (h V1Alpha1Handler) verifyInput(ctx context.Context, logger *logrus.Entry, r *http.Request) (StartRequest, error) {
+	request := StartRequest{
+		ExecutionSpaceProvider: config.EnvOrDefault("DEFAULT_EXECUTION_SPACE_PROVIDER", "default"),
+		LogAreaProvider:        config.EnvOrDefault("DEFAULT_LOG_AREA_PROVIDER", "default"),
+		IUTProvider:            config.EnvOrDefault("DEFAULT_IUT_PROVIDER", "default"),
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return request, NewHTTPError(fmt.Errorf("unable to decode post body %+v", err), http.StatusBadRequest)
+	}
+	if request.ArtifactID == "" && request.ArtifactIdentity == "" {
+		return request, NewHTTPError(errors.New("at least one of 'artifact_identity' or 'artifact_id' is required"), http.StatusBadRequest)
+	}
+	if request.ArtifactID != "" && request.ArtifactIdentity != "" {
+		return request, NewHTTPError(errors.New("only one of 'artifact_identity' or 'artifact_id' is required"), http.StatusBadRequest)
 	}
 
 	artifactCh := make(chan ArtifactResult, 1)
-	defer close(artifactCh)
+	suiteCh := make(chan error, 1)
 	go waitForArtifact(ctx, h.cfg, logger, request, artifactCh)
+	go waitForSuiteValidation(ctx, logger, h.validator, request.TestSuiteURL, suiteCh)
+
 	result := <-artifactCh
 	if result.err != nil {
-		logger.Error(result.err.Error())
-		sendError(w, result.err)
-		return
+		return request, result.err
 	}
-	artifact := result.Artifact
-
-	responses.RespondWithJSON(w, http.StatusOK, artifact)
+	request.Artifact = result.Artifact
+	err := <-suiteCh
+	if err != nil {
+		return request, err
+	}
+	return request, nil
 }
 
 // sendError sends an error HTTP response depending on which error has been returned.

@@ -36,10 +36,13 @@ type ArtifactResult struct {
 
 // waitForArtifact waits for an artifact created and reports it to a channel.
 func waitForArtifact(ctx context.Context, cfg config.Config, logger *logrus.Entry, request StartRequest, channel chan ArtifactResult) {
+	defer close(channel)
 	artifact, err := artifactCreated(ctx, cfg, logger, request)
-	channel <- ArtifactResult{
-		Artifact: artifact,
-		err:      err,
+	// Make sure we don't write to a closed channel.
+	select {
+	case <-ctx.Done():
+		return
+	case channel <- ArtifactResult{Artifact: artifact, err: err}:
 	}
 }
 
