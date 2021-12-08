@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -53,6 +54,9 @@ func main() {
 		"application": "etos-api",
 		"version":     GitSummary,
 	})
+	if err := validateInput(cfg); err != nil {
+		log.Panic(err)
+	}
 
 	log.Info("Loading v1alpha1 routes")
 	v1alpha1App := v1alpha1.New(cfg, log, ctx)
@@ -77,4 +81,13 @@ func main() {
 	if err := srv.Close(ctx); err != nil {
 		log.Errorf("Webserver shutdown failed: %+v", err)
 	}
+}
+
+// validateInput checks that all required input parameters that do not have sensible
+// defaults are actually set.
+func validateInput(cfg config.Config) error {
+	if cfg.EventRepositoryHost() == "" {
+		return errors.New("-eventrepository input or 'ETOS_GRAPHQL_SERVER' environment variable must be set")
+	}
+	return nil
 }
