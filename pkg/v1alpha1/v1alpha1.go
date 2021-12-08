@@ -108,8 +108,8 @@ func sendError(w http.ResponseWriter, err error) {
 	}
 }
 
-// requestTimeHandler will print the time each request took.
-func (h *V1Alpha1Handler) requestTimeHandler(fn func(w http.ResponseWriter, r *http.Request, param httprouter.Params)) func(w http.ResponseWriter, r *http.Request, param httprouter.Params) {
+// requestTimeHandler will log the time each request took.
+func (h *V1Alpha1Handler) requestTimeHandler(fn func(http.ResponseWriter, *http.Request, httprouter.Params)) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		start := time.Now()
 		h.logger.WithField("identifier", ps.ByName("identifier")).Infof("%s: %s", r.Method, r.URL.Path)
@@ -119,7 +119,7 @@ func (h *V1Alpha1Handler) requestTimeHandler(fn func(w http.ResponseWriter, r *h
 }
 
 // identifierHandler will generate an identifier and attach to each request.
-func (h *V1Alpha1Handler) identifierHandler(fn func(w http.ResponseWriter, r *http.Request, param httprouter.Params)) func(w http.ResponseWriter, r *http.Request, param httprouter.Params) {
+func (h *V1Alpha1Handler) identifierHandler(fn func(http.ResponseWriter, *http.Request, httprouter.Params)) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		ps = append(ps, httprouter.Param{Key: "identifier", Value: uuid.NewString()})
 		fn(w, r, ps)
@@ -127,7 +127,7 @@ func (h *V1Alpha1Handler) identifierHandler(fn func(w http.ResponseWriter, r *ht
 }
 
 // timeoutHandler will change the request context to a timeout context.
-func (h *V1Alpha1Handler) timeoutHandler(fn func(w http.ResponseWriter, r *http.Request, param httprouter.Params)) func(w http.ResponseWriter, r *http.Request, param httprouter.Params) {
+func (h *V1Alpha1Handler) timeoutHandler(fn func(http.ResponseWriter, *http.Request, httprouter.Params)) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		ctx, cancel := context.WithTimeout(r.Context(), h.cfg.Timeout())
 		defer cancel()
