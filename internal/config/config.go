@@ -80,7 +80,6 @@ func (c *cfg) LogFilePath() string {
 
 // EventRepositoryHost returns the host to use for event lookups.
 func (c *cfg) EventRepositoryHost() string {
-	// TODO: Validate that this is set
 	return c.eventRepositoryHost
 }
 
