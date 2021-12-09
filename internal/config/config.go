@@ -30,17 +30,19 @@ type Config interface {
 	LogLevel() string
 	LogFilePath() string
 	EventRepositoryHost() string
+	EnvironmentProviderHost() string
 	Timeout() time.Duration
 }
 
 // cfg implements the Config interface.
 type cfg struct {
-	apiHost             string
-	apiPort             string
-	logLevel            string
-	logFilePath         string
-	eventRepositoryHost string
-	timeout             time.Duration
+	apiHost                 string
+	apiPort                 string
+	logLevel                string
+	logFilePath             string
+	eventRepositoryHost     string
+	environmentProviderHost string
+	timeout                 time.Duration
 }
 
 // Get creates a config interface based on input parameters or environment variables.
@@ -57,6 +59,7 @@ func Get() Config {
 	flag.StringVar(&conf.logLevel, "loglevel", EnvOrDefault("LOGLEVEL", "INFO"), "Log level (TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, PANIC).")
 	flag.StringVar(&conf.logFilePath, "logfilepath", os.Getenv("LOG_FILE_PATH"), "Path, including filename, for the log files to create.")
 	flag.StringVar(&conf.eventRepositoryHost, "eventrepository", os.Getenv("ETOS_GRAPHQL_SERVER"), "Host to the GraphQL server to use for event lookup.")
+	flag.StringVar(&conf.environmentProviderHost, "environmentprovider", os.Getenv("ETOS_ENVIRONMENT_PROVIDER"), "Host to the ETOS environment provider.")
 	flag.DurationVar(&conf.timeout, "timeout", defaultTimeout, "Maximum timeout for requests to ETOS API.")
 
 	flag.Parse()
@@ -81,6 +84,11 @@ func (c *cfg) LogFilePath() string {
 // EventRepositoryHost returns the host to use for event lookups.
 func (c *cfg) EventRepositoryHost() string {
 	return c.eventRepositoryHost
+}
+
+// EnvironmentProvider returns the host to use for configuring the environment provider.
+func (c *cfg) EnvironmentProviderHost() string {
+	return c.environmentProviderHost
 }
 
 // Timeout returns the request timeout for starting ETOS.

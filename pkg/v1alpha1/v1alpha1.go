@@ -103,6 +103,24 @@ func (h *V1Alpha1Handler) StartETOS(w http.ResponseWriter, r *http.Request, ps h
 		sendError(w, err)
 		return
 	}
+	configuration := EnvironmentProviderConfiguration{
+		SuiteID:                identifier,
+		Dataset:                request.Dataset,
+		ExecutionSpaceProvider: request.ExecutionSpaceProvider,
+		IUTProvider:            request.IUTProvider,
+		LogAreaProvider:        request.LogAreaProvider,
+	}
+	environmentProvider := NewEnvironmentProvider(logger, h.cfg.EnvironmentProviderHost())
+	if err := configureEnvironmentProvider(ctx, logger, environmentProvider, configuration); err != nil {
+		logger.Error(err.Error())
+		sendError(w, err)
+		return
+	}
+	if err := verifyEnvironmentProvider(ctx, logger, environmentProvider, configuration); err != nil {
+		logger.Error(err.Error())
+		sendError(w, err)
+		return
+	}
 
 	response = StartResponse{
 		EventRepository:  h.cfg.EventRepositoryHost(),

@@ -30,12 +30,14 @@ func TestGet(t *testing.T) {
 	logLevel := "DEBUG"
 	logFilePath := "path/to/a/file"
 	erHost := "http://er/graphql"
+	epHost := "http://environment-provider"
 	timeoutStr := "1m"
 	os.Setenv("SERVER_HOST", serverHost)
 	os.Setenv("API_PORT", port)
 	os.Setenv("LOGLEVEL", logLevel)
 	os.Setenv("LOG_FILE_PATH", logFilePath)
 	os.Setenv("ETOS_GRAPHQL_SERVER", erHost)
+	os.Setenv("ETOS_ENVIRONMENT_PROVIDER", epHost)
 	os.Setenv("REQUEST_TIMEOUT", timeoutStr)
 
 	timeout, _ := time.ParseDuration(timeoutStr)
@@ -47,6 +49,7 @@ func TestGet(t *testing.T) {
 	assert.Equal(t, logLevel, conf.logLevel)
 	assert.Equal(t, logFilePath, conf.logFilePath)
 	assert.Equal(t, erHost, conf.eventRepositoryHost)
+	assert.Equal(t, epHost, conf.environmentProviderHost)
 	assert.Equal(t, timeout, conf.timeout)
 }
 
@@ -55,11 +58,12 @@ type getter func() string
 // Test that the getters in the Cfg struct return the values from the struct.
 func TestGetters(t *testing.T) {
 	conf := &cfg{
-		apiHost:             "127.0.0.1",
-		apiPort:             "8080",
-		logLevel:            "TRACE",
-		logFilePath:         "a/file/path.json",
-		eventRepositoryHost: "http://er/graphql",
+		apiHost:                 "127.0.0.1",
+		apiPort:                 "8080",
+		logLevel:                "TRACE",
+		logFilePath:             "a/file/path.json",
+		eventRepositoryHost:     "http://er/graphql",
+		environmentProviderHost: "http://environment-provider",
 	}
 	tests := []struct {
 		name     string
@@ -71,6 +75,7 @@ func TestGetters(t *testing.T) {
 		{name: "LogLevel", cfg: conf, function: conf.LogLevel, value: conf.logLevel},
 		{name: "LogFilePath", cfg: conf, function: conf.LogFilePath, value: conf.logFilePath},
 		{name: "EventRepositoryHost", cfg: conf, function: conf.EventRepositoryHost, value: conf.eventRepositoryHost},
+		{name: "EnvironmentProviderHost", cfg: conf, function: conf.EnvironmentProviderHost, value: conf.environmentProviderHost},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
