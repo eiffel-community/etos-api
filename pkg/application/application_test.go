@@ -38,6 +38,8 @@ func (t *testApp) LoadRoutes(router *httprouter.Router) {
 	router.GET(t.route, t.testRoute)
 }
 
+func (t *testApp) Close() {}
+
 // TestNew verifies that it is possible to load a handlers routes.
 func TestNew(t *testing.T) {
 	app := &testApp{
