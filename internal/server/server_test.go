@@ -28,7 +28,7 @@ import (
 // implements the Server interface
 func TestNewWebserver(t *testing.T) {
 	log := &logrus.Entry{}
-	cfg := testconfig.Get("", "", "", "", "", "1m")
+	cfg := testconfig.Get("", "", "", "", "", "", "1m")
 	webserver := NewWebserver(cfg, log, http.Handler(nil))
 	assert.Implements(t, (*Server)(nil), webserver)
 }

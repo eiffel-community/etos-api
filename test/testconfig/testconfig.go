@@ -24,26 +24,28 @@ import (
 )
 
 type cfg struct {
-	apiHost             string
-	apiPort             string
-	logLevel            string
-	logFilePath         string
-	eventRepositoryHost string
-	timeout             time.Duration
+	apiHost                 string
+	apiPort                 string
+	logLevel                string
+	logFilePath             string
+	eventRepositoryHost     string
+	environmentProviderHost string
+	timeout                 time.Duration
 }
 
-func Get(apiHost, apiPort, logLevel, logFilePath, erHost, timeoutStr string) config.Config {
+func Get(apiHost, apiPort, logLevel, logFilePath, erHost, epHost, timeoutStr string) config.Config {
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
 		logrus.Panic("timeout could not be parsed")
 	}
 	return &cfg{
-		apiHost:             apiHost,
-		apiPort:             apiPort,
-		logLevel:            logLevel,
-		logFilePath:         logFilePath,
-		eventRepositoryHost: erHost,
-		timeout:             timeout,
+		apiHost:                 apiHost,
+		apiPort:                 apiPort,
+		logLevel:                logLevel,
+		logFilePath:             logFilePath,
+		eventRepositoryHost:     erHost,
+		environmentProviderHost: epHost,
+		timeout:                 timeout,
 	}
 }
 
@@ -60,6 +62,10 @@ func (c *cfg) LogFilePath() string {
 }
 
 func (c *cfg) EventRepositoryHost() string {
+	return c.eventRepositoryHost
+}
+
+func (c *cfg) EnvironmentProviderHost() string {
 	return c.eventRepositoryHost
 }
 
