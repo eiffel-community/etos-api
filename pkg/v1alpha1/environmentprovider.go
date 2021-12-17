@@ -35,6 +35,7 @@ type EnvironmentProvider struct {
 	logger *logrus.Entry
 }
 
+// NewEnvironmentProvider creates a new environment provider struct with host an logger.
 func NewEnvironmentProvider(logger *logrus.Entry, host string) *EnvironmentProvider {
 	return &EnvironmentProvider{
 		host:   host,
@@ -57,16 +58,17 @@ type EnvironmentProviderResponse struct {
 	LogAreaProvider        map[string]interface{} `json:"log_area_provider"`
 }
 
+// Configure posts a configuration to the ETOS environment provider.
 func (e *EnvironmentProvider) Configure(ctx context.Context, configuration EnvironmentProviderConfiguration) error {
 	e.logger.Infof("configuring environment provider (%s) with suite ID %s", e.host, configuration.SuiteID)
-	host := strings.Join([]string{e.host, "configure"}, "/")
+	url := strings.Join([]string{e.host, "configure"}, "/")
 	client := http.Client{}
 	body, err := json.Marshal(configuration)
 	if err != nil {
 		return err
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, host, bytes.NewBuffer(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
 	if err != nil {
 		e.logger.Errorf("building http request failed: %v", err)
 		return err
@@ -85,17 +87,18 @@ func (e *EnvironmentProvider) Configure(ctx context.Context, configuration Envir
 	if response.StatusCode != http.StatusOK {
 		return NewHTTPError(fmt.Errorf("error when configuring environment (%s)", response.Status), response.StatusCode)
 	}
-	e.logger.Info(host)
+	e.logger.Info(url)
 	e.logger.Info("environment provider configured")
 	return nil
 }
 
+// Verify will request the environment provider to verify that the configuration has been properly added.
 func (e *EnvironmentProvider) Verify(ctx context.Context, configuration EnvironmentProviderConfiguration) error {
 	e.logger.Infof("verify environment provider configuration with suite ID %s", configuration.SuiteID)
-	host := strings.Join([]string{e.host, "configure"}, "/")
+	url := strings.Join([]string{e.host, "configure"}, "/")
 	client := http.Client{}
-	e.logger.Debugf("starting a GET request to %s", host)
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, host, nil)
+	e.logger.Debugf("starting a GET request to %s", url)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		e.logger.Errorf("building http request failed: %v", err)
 		return err
