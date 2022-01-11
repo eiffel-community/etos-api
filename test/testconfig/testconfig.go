@@ -69,6 +69,18 @@ func (c *cfg) EnvironmentProviderHost() string {
 	return c.eventRepositoryHost
 }
 
+func (c *cfg) RoutingKey(eventType string) string {
+	return eventType
+}
+
 func (c *cfg) Timeout() time.Duration {
 	return c.timeout
+}
+
+func (c *cfg) RabbitMQExchange() string {
+	return "exchange"
+}
+
+func (c *cfg) RabbitMQHost() string {
+	return "host"
 }

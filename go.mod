@@ -11,6 +11,7 @@ require (
 	github.com/sethvargo/go-retry v0.1.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/snowzach/rotatefilehook v0.0.0-20180327172521-2f64f265f58c
+	github.com/streadway/amqp v1.0.0
 	github.com/stretchr/testify v1.7.0
 	go.elastic.co/ecslogrus v1.0.0
 )

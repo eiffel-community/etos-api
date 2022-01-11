@@ -19,6 +19,7 @@ import "github.com/julienschmidt/httprouter"
 
 type Application interface {
 	LoadRoutes(*httprouter.Router)
+	Close()
 }
 
 // New loads routes for all applications supplied and returns a new router to

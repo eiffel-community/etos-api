@@ -25,6 +25,7 @@ import (
 
 	"github.com/eiffel-community/eiffelevents-sdk-go"
 	"github.com/eiffel-community/etos-api/internal/config"
+	"github.com/eiffel-community/etos-api/internal/rabbitmq"
 	"github.com/eiffel-community/etos-api/internal/responses"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/v1alpha1/suite"
@@ -38,12 +39,14 @@ type V1Alpha1Application struct {
 	logger    *logrus.Entry
 	cfg       config.Config
 	validator *suite.SuiteValidator
+	rabbitmq  *rabbitmq.RabbitMQPublisher
 }
 
 type V1Alpha1Handler struct {
 	logger    *logrus.Entry
 	cfg       config.Config
 	validator *suite.SuiteValidator
+	rabbitmq  *rabbitmq.RabbitMQPublisher
 }
 
 func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.Application {
@@ -55,12 +58,18 @@ func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.
 		logger:    log,
 		cfg:       cfg,
 		validator: validator,
+		rabbitmq:  rabbitmq.New(log, cfg),
 	}
+}
+
+// Close closes the RabbitMQ connection.
+func (a *V1Alpha1Application) Close() {
+	a.rabbitmq.Close()
 }
 
 // LoadRoutes loads all the v1alpha1 routes.
 func (a *V1Alpha1Application) LoadRoutes(router *httprouter.Router) {
-	handler := &V1Alpha1Handler{a.logger, a.cfg, a.validator}
+	handler := &V1Alpha1Handler{a.logger, a.cfg, a.validator, a.rabbitmq}
 	router.GET("/v1alpha1/selftest/ping", handler.Selftest)
 	router.POST("/v1alpha1/etos", handler.timeoutHandler(handler.identifierHandler(handler.requestTimeHandler(handler.StartETOS))))
 }
@@ -122,6 +131,12 @@ func (h *V1Alpha1Handler) StartETOS(w http.ResponseWriter, r *http.Request, ps h
 		return
 	}
 
+	if err := h.sendEvent(ctx, logger, tercc(request, identifier)); err != nil {
+		logger.Error(err.Error())
+		sendError(w, err)
+		return
+	}
+
 	response = StartResponse{
 		EventRepository:  h.cfg.EventRepositoryHost(),
 		TERCC:            identifier,
@@ -175,6 +190,31 @@ func sendError(w http.ResponseWriter, err error) {
 	} else {
 		responses.RespondWithError(w, httpError.Code, httpError.Message)
 	}
+}
+
+// sendEvent sends an Eiffel event on the event bus.
+func (h V1Alpha1Handler) sendEvent(ctx context.Context, logger *logrus.Entry, event eiffelevents.TestExecutionRecipeCollectionCreatedV4) error {
+	eventBytes, err := event.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	return h.rabbitmq.Publish(eventBytes, h.cfg.RoutingKey(event.Meta.Type))
+}
+
+// tercc creates a new test execution recipe collection created event
+func tercc(request StartRequest, identifier string) eiffelevents.TestExecutionRecipeCollectionCreatedV4 {
+	var event eiffelevents.TestExecutionRecipeCollectionCreatedV4
+	event.Meta.Type = "EiffelTestExecutionRecipeCollectionCreatedEvent"
+	event.Meta.Version = "4.0.0"
+	event.Meta.ID = identifier
+	event.Meta.Time = time.Now().UnixMilli()
+	event.Data.SelectionStrategy.ID = uuid.NewString()
+	event.Data.BatchesURI = request.TestSuiteURL
+	event.Links = append(event.Links, eiffelevents.TERCCV4Link{
+		Target: request.Artifact.Meta.ID,
+		Type:   "CAUSE",
+	})
+	return event
 }
 
 // requestTimeHandler will log the time each request took.

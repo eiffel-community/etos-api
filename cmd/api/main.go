@@ -60,6 +60,7 @@ func main() {
 
 	log.Info("Loading v1alpha1 routes")
 	v1alpha1App := v1alpha1.New(cfg, log, ctx)
+	defer v1alpha1App.Close()
 	handler := application.New(v1alpha1App)
 
 	srv := server.NewWebserver(cfg, log, handler)

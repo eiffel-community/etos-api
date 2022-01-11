@@ -29,6 +29,9 @@ func TestGet(t *testing.T) {
 	serverHost := "127.0.0.1"
 	logLevel := "DEBUG"
 	logFilePath := "path/to/a/file"
+	routingKeyTag := "tag"
+	routingKeyFamily := "family"
+	routingKeyDomain := "domain"
 	erHost := "http://er/graphql"
 	epHost := "http://environment-provider"
 	timeoutStr := "1m"
@@ -36,6 +39,9 @@ func TestGet(t *testing.T) {
 	os.Setenv("API_PORT", port)
 	os.Setenv("LOGLEVEL", logLevel)
 	os.Setenv("LOG_FILE_PATH", logFilePath)
+	os.Setenv("RABBITMQ_ROUTING_KEY_TAG", routingKeyTag)
+	os.Setenv("RABBITMQ_ROUTING_KEY_FAMILY", routingKeyFamily)
+	os.Setenv("RABBITMQ_ROUTING_KEY_DOMAIN_ID", routingKeyDomain)
 	os.Setenv("ETOS_GRAPHQL_SERVER", erHost)
 	os.Setenv("ETOS_ENVIRONMENT_PROVIDER", epHost)
 	os.Setenv("REQUEST_TIMEOUT", timeoutStr)
@@ -92,4 +98,16 @@ func TestTimeoutGetter(t *testing.T) {
 		timeout: timeout,
 	}
 	assert.Equal(t, conf.timeout, conf.Timeout())
+}
+
+// TestRoutingKeyGetter tests the getter for routing key. Similar to TestGetters, but since
+// an input is required, we separate its test.
+func TestRoutingKeyGetter(t *testing.T) {
+	conf := &cfg{
+		routingKeyTag:    "tag",
+		routingKeyFamily: "family",
+		routingKeyDomain: "domain",
+	}
+	eventType := "EventType"
+	assert.Equal(t, "eiffel.family.EventType.tag.domain", conf.RoutingKey(eventType))
 }
