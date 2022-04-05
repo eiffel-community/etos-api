@@ -1,4 +1,4 @@
-// Copyright 2021 Axis Communications AB.
+// Copyright 2021-2022 Axis Communications AB.
 //
 // For a full list of individual contributors, please see the commit history.
 //
@@ -29,6 +29,7 @@ import (
 	"github.com/eiffel-community/etos-api/internal/responses"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/v1alpha1/suite"
+	"github.com/streadway/amqp"
 
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -39,14 +40,14 @@ type V1Alpha1Application struct {
 	logger    *logrus.Entry
 	cfg       config.Config
 	validator *suite.SuiteValidator
-	rabbitmq  *rabbitmq.RabbitMQPublisher
+	rabbitmq  *rabbitmq.Publisher
 }
 
 type V1Alpha1Handler struct {
 	logger    *logrus.Entry
 	cfg       config.Config
 	validator *suite.SuiteValidator
-	rabbitmq  *rabbitmq.RabbitMQPublisher
+	rabbitmq  *rabbitmq.Publisher
 }
 
 func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.Application {
@@ -58,7 +59,10 @@ func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.
 		logger:    log,
 		cfg:       cfg,
 		validator: validator,
-		rabbitmq:  rabbitmq.New(log, cfg),
+		rabbitmq: rabbitmq.NewPublisher(rabbitmq.PublisherConfig{
+			URL:          cfg.RabbitMQHost(),
+			ExchangeName: cfg.RabbitMQExchange(),
+		}),
 	}
 }
 
@@ -198,7 +202,13 @@ func (h V1Alpha1Handler) sendEvent(ctx context.Context, logger *logrus.Entry, ev
 	if err != nil {
 		return err
 	}
-	return h.rabbitmq.Publish(eventBytes, h.cfg.RoutingKey(event.Meta.Type))
+	// return h.rabbitmq.Publish(eventBytes, h.cfg.RoutingKey(event.Meta.Type))
+	return h.rabbitmq.Publish(
+		ctx,
+		logger,
+		h.cfg.RoutingKey(event.Meta.Type),
+		amqp.Publishing{Body: eventBytes},
+	)
 }
 
 // tercc creates a new test execution recipe collection created event
