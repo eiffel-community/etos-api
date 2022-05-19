@@ -8,7 +8,7 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/machinebox/graphql v0.2.2
 	github.com/qri-io/jsonschema v0.2.1
-	github.com/sethvargo/go-retry v0.1.0
+	github.com/sethvargo/go-retry v0.2.3
 	github.com/sirupsen/logrus v1.8.1
 	github.com/snowzach/rotatefilehook v0.0.0-20180327172521-2f64f265f58c
 	github.com/streadway/amqp v1.0.0
