@@ -115,7 +115,7 @@ class Docker:
         return base, tag
 
     def repository(self, repo: str) -> tuple[str, str]:
-        """Figure out repository and repo from a container image name.
+        """Figure out repository and registry from a container image name.
 
         :param repo: Name of image, including or excluding registry URL.
         :return: Registry URL and the repo path for that registry.
