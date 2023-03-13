@@ -38,7 +38,7 @@ class Docker:
     tokens = {}
     lock = Lock()
 
-    def token(self, manifest_url):
+    def token(self, manifest_url: str) -> str:
         """Get a stored token, removing it if expired.
 
         :param manifest_url: URL the token has been stored for.
@@ -105,6 +105,12 @@ class Docker:
         tag = ""
 
         parts = base.split(TAG_DELIMITER)
+        # Verify that we aren't confusing a tag for a hostname w/ port
+        # If there are more than one ':' in the image name, we'll assume
+        # that the container tag is after the second ':', not the first.
+        # By checking if the first part (i.e. hostname w/ port) does not
+        # have any '/', we will also catch cases where there's a
+        # hostname w/ port and no tag in the image name.
         if len(parts) > 1 and REPO_DELIMITER not in parts[-1]:
             base = TAG_DELIMITER.join(parts[:-1])
             tag = parts[-1]
@@ -138,7 +144,7 @@ class Docker:
             registry = DEFAULT_REGISTRY
         return registry, repo
 
-    async def digest(self, name):
+    async def digest(self, name: str) -> str:
         """Get a sha256 digest from an image in an image repository.
 
         :param name: The name of the container image.
