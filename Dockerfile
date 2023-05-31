@@ -16,7 +16,7 @@ RUN apt-get update && \
     apt-get install -y gcc libc-dev tzdata --no-install-recommends && \
     pip install --no-cache-dir /tmp/*.whl && \
     apt-get purge -y --auto-remove gcc libc-dev && \
-	rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r etos && useradd -r -m -s /bin/false -g etos etos
 USER etos
