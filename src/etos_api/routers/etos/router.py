@@ -111,15 +111,17 @@ async def start_etos(etos: StartEtosRequest):
 
     LOGGER.info("Start event publisher.")
     await sync_to_async(etos_library.start_publisher)
-    await sync_to_async(etos_library.publisher.wait_start)
+    if not etos_library.debug.disable_sending_events:
+        await sync_to_async(etos_library.publisher.wait_start)
     LOGGER.info("Event published started successfully.")
     LOGGER.info("Publish TERCC event.")
     try:
         event = etos_library.events.send(tercc, links, data)
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
     finally:
-        await sync_to_async(etos_library.publisher.stop)
-        await sync_to_async(etos_library.publisher.wait_close)
+        if not etos_library.debug.disable_sending_events:
+            await sync_to_async(etos_library.publisher.stop)
+            await sync_to_async(etos_library.publisher.wait_close)
     LOGGER.info("Event published.")
 
     LOGGER.info("ETOS triggered successfully.")
