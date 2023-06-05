@@ -18,13 +18,11 @@ import logging
 from uuid import uuid4
 import os
 from fastapi import APIRouter, HTTPException
-from starlette.responses import Response
 from etos_lib import ETOS
-from etos_lib.logging.logger import FORMAT_CONFIG
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 
 from etos_api.library.validator import SuiteValidator
-from etos_api.library.utilities import sync_to_async, aclosing
+from etos_api.library.utilities import sync_to_async
 from etos_api.routers.environment_provider.router import configure_environment_provider
 from etos_api.routers.environment_provider.schemas import (
     ConfigureEnvironmentProviderRequest,
@@ -76,9 +74,10 @@ async def start_etos(etos: StartEtosRequest):
             status_code=400, detail=f"Could not connect to GraphQL. {exception}"
         ) from exception
     if artifact is None:
+        identity = etos.artifact_identity or str(etos.artifact_id)
         raise HTTPException(
             status_code=400,
-            detail=f"Unable to find artifact with identity '{etos.artifact_identity or str(etos.artifact_id)}'",
+            detail=f"Unable to find artifact with identity '{identity}'",
         )
     LOGGER.info("Found artifact created %r", artifact)
     # There are assumptions here. Since "edges" list is already tested

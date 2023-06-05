@@ -16,8 +16,8 @@
 """ETOS API module."""
 import os
 from importlib.metadata import version, PackageNotFoundError
-from etos_api.library.context_logging import ContextLogging
 from etos_lib.logging.logger import setup_logging
+from etos_api.library.context_logging import ContextLogging
 
 try:
     VERSION = version("environment_provider")
