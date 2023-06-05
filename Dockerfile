@@ -8,11 +8,13 @@ FROM python:3.9.0-slim-buster
 
 COPY --from=build /src/dist/*.whl /tmp
 # hadolint ignore=DL3013
+# hadolint ignore=DL3008
 
 RUN apt-get update && \
     apt-get install -y gcc libc-dev --no-install-recommends && \
     pip install --no-cache-dir /tmp/*.whl && \
-    apt-get purge -y --auto-remove gcc libc-dev
+    apt-get purge -y --auto-remove gcc libc-dev && \
+	rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r etos && useradd -r -m -s /bin/false -g etos etos
 USER etos
