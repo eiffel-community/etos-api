@@ -9,9 +9,9 @@ ARG TZ
 ENV TZ=$TZ
 
 COPY --from=build /src/dist/*.whl /tmp
+
 # hadolint ignore=DL3013
 # hadolint ignore=DL3008
-
 RUN apt-get update && \
     apt-get install -y gcc libc-dev tzdata --no-install-recommends && \
     pip install --no-cache-dir /tmp/*.whl && \

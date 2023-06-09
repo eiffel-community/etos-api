@@ -30,7 +30,10 @@ ROUTER = APIRouter()
 try:
     config.load_incluster_config()
 except config.ConfigException:
-    config.load_config()
+    try:
+        config.load_config()
+    except config.ConfigException:
+        LOGGER.warning("Could not load a Kubernetes config")
 
 
 @ROUTER.get("/logs/{uuid}", tags=["logs"])
