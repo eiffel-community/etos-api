@@ -93,7 +93,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "etos_api"
-copyright = "2020, Axis Communications AB"
+copyright = "Axis Communications AB"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

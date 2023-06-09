@@ -5,13 +5,15 @@ WORKDIR /src
 RUN python3 setup.py bdist_wheel
 
 FROM python:3.9.0-slim-buster
+ARG TZ
+ENV TZ=$TZ
 
 COPY --from=build /src/dist/*.whl /tmp
 # hadolint ignore=DL3013
 # hadolint ignore=DL3008
 
 RUN apt-get update && \
-    apt-get install -y gcc libc-dev --no-install-recommends && \
+    apt-get install -y gcc libc-dev tzdata --no-install-recommends && \
     pip install --no-cache-dir /tmp/*.whl && \
     apt-get purge -y --auto-remove gcc libc-dev && \
 	rm -rf /var/lib/apt/lists/*
