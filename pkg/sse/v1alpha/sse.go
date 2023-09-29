@@ -223,10 +223,14 @@ func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprou
 		case event := <-receiver:
 			if event.Event == "shutdown" {
 				forceKillConnection(w)
-				break
+				return
 			}
+
 			if err := event.Write(w); err != nil {
 				h.logger.Error(err)
+				if err == http.ErrHijacked {
+					return
+				}
 				continue
 			}
 			flusher.Flush()
