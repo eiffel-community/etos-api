@@ -27,7 +27,7 @@ jobs:
         run: pip install -U setuptools
       - name: Run Tox
         run: tox
-        working-direcotry: ./python
+        working-directory: ./python
 
   run-hadolint:
     # The type of runner that the job will run on
