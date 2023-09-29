@@ -64,7 +64,6 @@ class StartEtosResponse(BaseModel):
     """Response model for the ETOS start API."""
 
     event_repository: str
-    sse_server: str
     tercc: UUID
     artifact_id: UUID
     artifact_identity: str

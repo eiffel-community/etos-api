@@ -130,5 +130,4 @@ async def start_etos(etos: StartEtosRequest):
         "artifact_id": artifact_id,
         "artifact_identity": identity,
         "event_repository": etos_library.debug.graphql_server,
-        "sse_server": os.getenv("ETOS_SSE_SERVER", etos_library.debug.etos_api),
     }
