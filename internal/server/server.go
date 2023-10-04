@@ -30,16 +30,16 @@ type Server interface {
 	Close(ctx context.Context) error
 }
 
-// Webserver is a struct for webservers implementing the Server interface.
-type WebServer struct {
+// WebService is a struct for webservices implementing the Server interface.
+type WebService struct {
 	server *http.Server
 	cfg    config.Config
 	logger *logrus.Entry
 }
 
-// NewWebserver creates a new Server of the webserver type.
-func NewWebserver(cfg config.Config, log *logrus.Entry, handler http.Handler) Server {
-	webserver := &WebServer{
+// NewWebService creates a new Server of the webservice type.
+func NewWebService(cfg config.Config, log *logrus.Entry, handler http.Handler) Server {
+	webservice := &WebService{
 		server: &http.Server{
 			Addr:    fmt.Sprintf("%s:%s", cfg.ServiceHost(), cfg.ServicePort()),
 			Handler: handler,
@@ -47,17 +47,17 @@ func NewWebserver(cfg config.Config, log *logrus.Entry, handler http.Handler) Se
 		cfg:    cfg,
 		logger: log,
 	}
-	return webserver
+	return webservice
 }
 
-// Start a webserver and block until closed or crashed.
-func (s *WebServer) Start() error {
-	s.logger.Infof("Starting webserver listening on %s:%s", s.cfg.ServiceHost(), s.cfg.ServicePort())
+// Start a webservice and block until closed or crashed.
+func (s *WebService) Start() error {
+	s.logger.Infof("Starting webservice listening on %s:%s", s.cfg.ServiceHost(), s.cfg.ServicePort())
 	return s.server.ListenAndServe()
 }
 
-// Close calls shutdown on the webserver. Shutdown times out if context is cancelled.
-func (s *WebServer) Close(ctx context.Context) error {
-	s.logger.Info("Shutting down webserver")
+// Close calls shutdown on the webservice. Shutdown times out if context is cancelled.
+func (s *WebService) Close(ctx context.Context) error {
+	s.logger.Info("Shutting down webservice")
 	return s.server.Shutdown(ctx)
 }

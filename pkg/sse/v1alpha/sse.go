@@ -29,7 +29,6 @@ import (
 
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/kubernetes"
-	"github.com/eiffel-community/etos-api/internal/responses"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/events"
 	"github.com/julienschmidt/httprouter"
@@ -76,12 +75,18 @@ func (a SSEApplication) LoadRoutes(router *httprouter.Router) {
 
 // Selftest is a handler to just return 204.
 func (h SSEHandler) Selftest(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	responses.RespondWithError(w, http.StatusNoContent, "")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusNoContent)
+	_, err := fmt.Fprintln(w, http.StatusText(http.StatusNoContent))
+	if err != nil {
+		h.logger.Error(err.Error())
+	}
 }
 
 // Subscribe subscribes to an ETOS suite runner instance and gets logs and events from it and
 // writes them to a channel.
-func (h SSEHandler) Subscribe(ch chan<- events.Event, ctx context.Context, counter int, identifier string, url string) {
+func (h SSEHandler) Subscribe(ch chan<- events.Event, logger *logrus.Entry, ctx context.Context, counter int, identifier string, url string) {
 	defer close(ch)
 
 	tick := time.NewTicker(1 * time.Second)
@@ -92,19 +97,19 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, ctx context.Context, count
 	for {
 		select {
 		case <-ctx.Done():
-			h.logger.Info("Client lost, closing subscriber")
+			logger.Info("Client lost, closing subscriber")
 			return
 		case <-ping.C:
 			ch <- events.Event{Event: "ping"}
 		case <-tick.C:
 			if h.kube.IsFinished(ctx, identifier) {
-				h.logger.Info("ESR finished, shutting down")
+				logger.Info("ESR finished, shutting down")
 				ch <- events.Event{Event: "shutdown"}
 				return
 			}
 			messages, err := GetFrom(ctx, url)
 			if err != nil {
-				h.logger.Warning(err.Error())
+				logger.Warning(err.Error())
 				continue
 			}
 			// SSE starts ad ID 1, but slices start with index 0, so we do -1 here.
@@ -159,15 +164,16 @@ func (h SSEHandler) url(ctx context.Context, identifier string) (string, error) 
 // forceKillConnection hijacks the underlying TCP connection between the client and server
 // and stops it forcefully. This will cause a panic in the goroutine running the connection
 // but this is the only way for us to be compatible with the old ETOS SSE implementation.
-func forceKillConnection(w http.ResponseWriter) {
+func forceKillConnection(w http.ResponseWriter, logger *logrus.Entry) {
+	logger.Warning("hijacking the connection in order to force kill it. This may result in panics in the log")
 	hijack, ok := w.(http.Hijacker)
 	if !ok {
-		responses.RespondWithError(w, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	connection, _, err := hijack.Hijack()
 	if err != nil {
-		responses.RespondWithError(w, http.StatusInternalServerError, http.StatusText(http.StatusInternalServerError))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	connection.Close()
@@ -177,12 +183,15 @@ func forceKillConnection(w http.ResponseWriter) {
 func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier := ps.ByName("identifier")
 	if h.kube.IsFinished(r.Context(), identifier) {
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		http.NotFound(w, r)
 		return
 	}
+	// Making it possible for us to correlate logs to a specific connection
+	logger := h.logger.WithField("identifier", identifier)
+
 	url, err := h.url(r.Context(), identifier)
 	if err != nil {
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		http.NotFound(w, r)
 		return
 	}
 
@@ -192,42 +201,42 @@ func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprou
 		var err error
 		last_id, err = strconv.Atoi(lastEventID)
 		if err != nil {
-			h.logger.Error("Last-Event-ID header is not parsable")
-			responses.RespondWithError(w, http.StatusBadRequest, http.StatusText(http.StatusBadRequest))
+			logger.Error("Last-Event-ID header is not parsable")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		http.NotFound(w, r)
 		return
 	}
-	h.logger.Info("Client connected to SSE")
+	logger.Info("Client connected to SSE")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
 	receiver := make(chan events.Event) // Channel is closed in Subscriber
-	go h.Subscribe(receiver, r.Context(), last_id, identifier, url)
+	go h.Subscribe(receiver, logger, r.Context(), last_id, identifier, url)
 
 	for {
 		select {
 		case <-r.Context().Done():
-			h.logger.Info("Client gone from SSE")
+			logger.Info("Client gone from SSE")
 			return
 		case <-h.ctx.Done():
-			h.logger.Info("Shutting down")
+			logger.Info("Shutting down")
 			return
 		case event := <-receiver:
 			if event.Event == "shutdown" {
-				forceKillConnection(w)
+				forceKillConnection(w, logger)
 				return
 			}
 
 			if err := event.Write(w); err != nil {
-				h.logger.Error(err)
+				logger.Error(err)
 				if err == http.ErrHijacked {
 					return
 				}

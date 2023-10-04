@@ -26,7 +26,6 @@ import (
 
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/kubernetes"
-	"github.com/eiffel-community/etos-api/internal/responses"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/events"
 	"github.com/julienschmidt/httprouter"
@@ -74,12 +73,18 @@ func (a SSEApplication) LoadRoutes(router *httprouter.Router) {
 
 // Selftest is a handler to just return 204.
 func (h SSEHandler) Selftest(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	responses.RespondWithError(w, http.StatusNoContent, "")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusNoContent)
+	_, err := fmt.Fprintln(w, http.StatusText(http.StatusNoContent))
+	if err != nil {
+		h.logger.Error(err.Error())
+	}
 }
 
 // Subscribe subscribes to an ETOS suite runner instance and gets logs and events from it and
 // writes them to a channel.
-func (h SSEHandler) Subscribe(ch chan<- events.Event, ctx context.Context, counter int, identifier string, url string) {
+func (h SSEHandler) Subscribe(ch chan<- events.Event, logger *logrus.Entry, ctx context.Context, counter int, identifier string, url string) {
 	defer close(ch)
 
 	// TODO: Test a streaming approach.
@@ -91,15 +96,15 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, ctx context.Context, count
 	for {
 		select {
 		case <-ctx.Done():
-			h.logger.Info("Client lost, closing subscriber")
+			logger.Info("Client lost, closing subscriber")
 			return
 		case <-ping.C:
 			ch <- events.Event{Event: "ping"}
 		case <-tick.C:
 			if h.kube.IsFinished(ctx, identifier) {
-				h.logger.Info("ESR finished, shutting down")
-				// If this is not sent to the client, then the client will reconnect and
-				// the message will be received next time.
+				logger.Info("ESR finished, shutting down")
+				// If the shutdown event is not sent to the client, then the client will
+				// reconnect and the message will be received next time.
 				ch <- events.Event{Event: "shutdown", Data: "ESR finished, shutting down"}
 				// We expect the client to close the connection, as such we continue here
 				// instead of ending the subscriber.
@@ -107,7 +112,7 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, ctx context.Context, count
 			}
 			events, err := GetFrom(ctx, url, fmt.Sprint(counter))
 			if err != nil {
-				h.logger.Warning(err.Error())
+				logger.Warning(err.Error())
 				continue
 			}
 			for _, event := range events {
@@ -118,7 +123,7 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, ctx context.Context, count
 	}
 }
 
-// GetFrom gets all events from an ESR instance starting from id.
+// GetFrom gets all events from an ESR instance starting from id (including the id specified).
 func GetFrom(ctx context.Context, url string, id string) ([]events.Event, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -178,7 +183,7 @@ func (h SSEHandler) url(ctx context.Context, identifier string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("http://%s:8000/log", url), nil
+	return fmt.Sprintf("http://%s:8000/v1/log", url), nil
 }
 
 // GetEvent is an endpoint for getting a single event from an ESR instance.
@@ -186,24 +191,27 @@ func (h SSEHandler) GetEvent(w http.ResponseWriter, r *http.Request, ps httprout
 	identifier := ps.ByName("identifier")
 	counter := ps.ByName("id")
 	if h.kube.IsFinished(r.Context(), identifier) {
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		http.NotFound(w, r)
 		return
 	}
+	// Making it possible for us to correlate logs to a specific connection
+	logger := h.logger.WithField("identifier", identifier)
+
 	url, err := h.url(r.Context(), identifier)
 	if err != nil {
-		h.logger.Error(err)
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		logger.Error(err)
+		http.NotFound(w, r)
 		return
 	}
 
 	event, err := GetOne(r.Context(), url, counter)
 	if err != nil {
-		h.logger.Error(err)
+		logger.Error(err)
 		// TODO: Message client
 		return
 	}
 	if err := event.Write(w); err != nil {
-		h.logger.Error(err)
+		logger.Error(err)
 	}
 }
 
@@ -211,12 +219,15 @@ func (h SSEHandler) GetEvent(w http.ResponseWriter, r *http.Request, ps httprout
 func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier := ps.ByName("identifier")
 	if h.kube.IsFinished(r.Context(), identifier) {
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		http.NotFound(w, r)
 		return
 	}
+	// Making it possible for us to correlate logs to a specific connection
+	logger := h.logger.WithField("identifier", identifier)
+
 	url, err := h.url(r.Context(), identifier)
 	if err != nil {
-		responses.RespondWithError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
+		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -230,32 +241,32 @@ func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprou
 		var err error
 		last_id, err = strconv.Atoi(lastEventID)
 		if err != nil {
-			h.logger.Error("Last-Event-ID header is not parsable")
+			logger.Error("Last-Event-ID header is not parsable")
 		}
 	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		responses.RespondWithError(w, 404, "Not Found")
+		http.NotFound(w, r)
 		return
 	}
 
-	h.logger.Info("Client connected to SSE")
+	logger.Info("Client connected to SSE")
 
 	receiver := make(chan events.Event) // Channel is closed in Subscriber
-	go h.Subscribe(receiver, r.Context(), last_id, identifier, url)
+	go h.Subscribe(receiver, logger, r.Context(), last_id, identifier, url)
 
 	for {
 		select {
 		case <-r.Context().Done():
-			h.logger.Info("Client gone from SSE")
+			logger.Info("Client gone from SSE")
 			return
 		case <-h.ctx.Done():
-			h.logger.Info("Shutting down")
+			logger.Info("Shutting down")
 			return
 		case event := <-receiver:
 			if err := event.Write(w); err != nil {
-				h.logger.Error(err)
+				logger.Error(err)
 				continue
 			}
 			flusher.Flush()

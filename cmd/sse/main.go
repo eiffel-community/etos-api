@@ -65,12 +65,12 @@ func main() {
 	defer v1AlphaSSE.Close()
 	v1SSE := v1.New(cfg, log, ctx)
 	defer v1SSE.Close()
-	handler := application.New(v1AlphaSSE, v1SSE)
 
-	srv := server.NewWebserver(cfg, log, handler)
+	app := application.New(v1AlphaSSE, v1SSE)
+	srv := server.NewWebService(cfg, log, app)
 
 	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		if err := srv.Start(); err != nil && err != http.ErrServerClosed {
@@ -78,10 +78,10 @@ func main() {
 		}
 	}()
 
-	<-done
-	log.Info("SIGTERM received")
+	sig := <-done
+	log.Infof("%s received", sig.String())
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
 	if err := srv.Close(ctx); err != nil {

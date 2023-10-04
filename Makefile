@@ -19,7 +19,7 @@ all: test build start
 
 .PHONY: build
 build:
-	go build -o $(SSE) ./cmd/sse
+	go build -ldflags="-w -s -buildid=" -trimpath -o $(SSE) ./cmd/sse
 
 .PHONY: clean
 clean:
