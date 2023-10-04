@@ -101,21 +101,25 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, logger *logrus.Entry, ctx 
 		case <-ping.C:
 			ch <- events.Event{Event: "ping"}
 		case <-tick.C:
-			if h.kube.IsFinished(ctx, identifier) {
-				logger.Info("ESR finished, shutting down")
-				// If the shutdown event is not sent to the client, then the client will
-				// reconnect and the message will be received next time.
-				ch <- events.Event{Event: "shutdown", Data: "ESR finished, shutting down"}
-				// We expect the client to close the connection, as such we continue here
-				// instead of ending the subscriber.
-				continue
-			}
-			events, err := GetFrom(ctx, url, fmt.Sprint(counter))
+			newEvents, err := GetFrom(ctx, url, fmt.Sprint(counter))
 			if err != nil {
+				// The context sent to IsFinished may be canceled due to client-side
+				// throttling by Kubernetes. We don't want IsFinished to cancel the
+				// the request context from our clients, causing a ConnectionReset,
+				// so we create a new context here.
+				if h.kube.IsFinished(context.Background(), identifier) {
+					logger.Info("ESR finished, shutting down")
+					// If the shutdown event is not sent to the client, then the client will
+					// reconnect and the message will be received next time.
+					ch <- events.Event{Event: "shutdown", Data: "ESR finished, shutting down"}
+					// We expect the client to close the connection, as such we continue here
+					// instead of ending the subscriber.
+					continue
+				}
 				logger.Warning(err.Error())
 				continue
 			}
-			for _, event := range events {
+			for _, event := range newEvents {
 				ch <- event
 				counter++
 			}

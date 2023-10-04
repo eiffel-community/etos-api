@@ -39,7 +39,7 @@ test:
 
 # Start a development docker with a database that restarts on file changes.
 .PHONY: start
-start: $(COMPILEDAEMON) gen-deps
+start: $(COMPILEDAEMON)
 	docker compose --project-directory . -f deploy/$(DEPLOY)/docker-compose.yml up
 
 .PHONY: stop
