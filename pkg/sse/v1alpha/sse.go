@@ -78,10 +78,6 @@ func (h SSEHandler) Selftest(w http.ResponseWriter, r *http.Request, _ httproute
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusNoContent)
-	_, err := fmt.Fprintln(w, http.StatusText(http.StatusNoContent))
-	if err != nil {
-		h.logger.Error(err.Error())
-	}
 }
 
 // Subscribe subscribes to an ETOS suite runner instance and gets logs and events from it and
