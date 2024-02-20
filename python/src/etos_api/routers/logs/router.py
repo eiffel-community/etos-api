@@ -16,38 +16,19 @@
 """ETOS API log handler."""
 import asyncio
 import logging
-import os
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from kubernetes import client, config
+from kubernetes import client
 from sse_starlette.sse import EventSourceResponse
 from starlette.requests import Request
+
+from etos_api.routers.lib.kubernetes import namespace
 
 NAMESPACE_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 LOGGER = logging.getLogger(__name__)
 ROUTER = APIRouter()
-
-try:
-    config.load_incluster_config()
-except config.ConfigException:
-    try:
-        config.load_config()
-    except config.ConfigException:
-        LOGGER.warning("Could not load a Kubernetes config")
-
-
-def namespace() -> str:
-    """Get current namespace if available."""
-    if not os.path.isfile(NAMESPACE_FILE):
-        LOGGER.warning(
-            "Not running in Kubernetes. Cannot figure out namespace. "
-            "Defaulting to environment variable 'ETOS_NAMESPACE'."
-        )
-        return os.getenv("ETOS_NAMESPACE")
-    with open(NAMESPACE_FILE, encoding="utf-8") as namespace_file:
-        return namespace_file.read()
 
 
 @ROUTER.get("/logs/{uuid}", tags=["logs"])
