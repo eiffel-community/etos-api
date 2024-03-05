@@ -32,5 +32,4 @@ def log_area_provider_schema(ruleset: dict) -> pathlib.Path:
     """
     if ruleset.get("log", {}).get("type", "jsontas") == "external":
         return EXTERNAL_LOG_AREA_PROVIDER_SCHEMA
-    else:
-        return LOG_AREA_PROVIDER_SCHEMA
+    return LOG_AREA_PROVIDER_SCHEMA

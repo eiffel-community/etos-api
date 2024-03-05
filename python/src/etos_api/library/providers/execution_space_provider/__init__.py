@@ -32,5 +32,4 @@ def execution_space_provider_schema(ruleset: dict) -> pathlib.Path:
     """
     if ruleset.get("execution_space", {}).get("type", "jsontas") == "external":
         return EXTERNAL_EXECUTION_SPACE_PROVIDER_SCHEMA
-    else:
-        return EXECUTION_SPACE_PROVIDER_SCHEMA
+    return EXECUTION_SPACE_PROVIDER_SCHEMA

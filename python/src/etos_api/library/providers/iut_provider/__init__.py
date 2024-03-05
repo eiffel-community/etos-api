@@ -32,5 +32,4 @@ def iut_provider_schema(ruleset: dict) -> pathlib.Path:
     """
     if ruleset.get("iut", {}).get("type", "jsontas") == "external":
         return EXTERNAL_IUT_PROVIDER_SCHEMA
-    else:
-        return IUT_PROVIDER_SCHEMA
+    return IUT_PROVIDER_SCHEMA
