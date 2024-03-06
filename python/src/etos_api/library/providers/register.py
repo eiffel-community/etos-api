@@ -41,7 +41,6 @@ class RegisterProviders:  # pylint:disable=too-few-public-methods
 
     def load_providers_from_disk(self) -> None:
         """Register provider files from file system, should environment variables be set."""
-
         if os.getenv("EXECUTION_SPACE_PROVIDERS"):
             for provider in self.providers(Path(os.getenv("EXECUTION_SPACE_PROVIDERS"))):
                 self.logger.info("Registering execution space provider: %s", provider)
