@@ -24,5 +24,5 @@ kubernetes~=26.1
 sse-starlette~=1.6
 opentelemetry-api~=1.21
 opentelemetry-exporter-otlp~=1.21
-opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-instrumentation-fastapi==0.44b0
 opentelemetry-sdk~=1.21
