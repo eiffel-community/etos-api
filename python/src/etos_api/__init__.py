@@ -58,4 +58,4 @@ if os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"):
         APP, tracer_provider=PROVIDER, excluded_urls="selftest/.*,logs/.*"
     )
 
-REG = RegisterProviders()
+RegisterProviders()
