@@ -21,13 +21,15 @@ from uuid import uuid4
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
 from fastapi import APIRouter, HTTPException
+from kubernetes import client
 from opentelemetry import trace
 
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
 from etos_api.library.validator import SuiteValidator
+from etos_api.routers.lib.kubernetes import namespace
 
-from .schemas import StartEtosRequest, StartEtosResponse
+from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
 from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
@@ -141,6 +143,32 @@ async def _start(etos: StartEtosRequest, span: "Span") -> dict:
     }
 
 
+async def _abort(suite_id: str) -> dict:
+    ns = namespace()
+
+    batch_api = client.BatchV1Api()
+    jobs = batch_api.list_namespaced_job(namespace=ns)
+
+    delete_options = client.V1DeleteOptions(
+        propagation_policy="Background"  # asynchronous cascading deletion
+    )
+
+    for job in jobs.items:
+        if (
+            job.metadata.labels.get("app") == "suite-runner"
+            and job.metadata.labels.get("id") == suite_id
+        ):
+            batch_api.delete_namespaced_job(
+                name=job.metadata.name, namespace=ns, body=delete_options
+            )
+            LOGGER.info("Deleted suite-runner job: %s", job.metadata.name)
+            break
+    else:
+        raise HTTPException(status_code=404, detail="Suite ID not found.")
+
+    return {"message": f"Abort triggered for suite id: {suite_id}."}
+
+
 @ROUTER.post("/etos", tags=["etos"], response_model=StartEtosResponse)
 async def start_etos(etos: StartEtosRequest):
     """Start ETOS execution on post.
@@ -152,3 +180,16 @@ async def start_etos(etos: StartEtosRequest):
     """
     with TRACER.start_as_current_span("start-etos") as span:
         return await _start(etos, span)
+
+
+@ROUTER.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
+async def abort_etos(suite_id: str):
+    """Abort ETOS execution on delete.
+
+    :param suite_id: ETOS suite id
+    :type suite_id: str
+    :return: JSON dictionary with response.
+    :rtype: dict
+    """
+    with TRACER.start_as_current_span("abort-etos"):
+        return await _abort(suite_id)

@@ -25,8 +25,16 @@ from pydantic import BaseModel, Field, field_validator  # pylint:disable=no-name
 # pylint: disable=no-self-argument
 
 
-class StartEtosRequest(BaseModel):
-    """Request model for the ETOS start API."""
+class EtosRequest(BaseModel):
+    """Base class for ETOS request models."""
+
+
+class EtosResponse(BaseModel):
+    """Base class for ETOS response models."""
+
+
+class StartEtosRequest(EtosRequest):
+    """Request model for the start endpoint of the ETOS API."""
 
     artifact_identity: Optional[str]
     artifact_id: Optional[UUID] = Field(default=None, validate_default=True)
@@ -57,10 +65,16 @@ class StartEtosRequest(BaseModel):
         return artifact_id
 
 
-class StartEtosResponse(BaseModel):
-    """Response model for the ETOS start API."""
+class StartEtosResponse(EtosResponse):
+    """Response model for the start endpoint of the ETOS API."""
 
     event_repository: str
     tercc: UUID
     artifact_id: UUID
     artifact_identity: str
+
+
+class AbortEtosResponse(EtosResponse):
+    """Response model for the abort endpoint of the ETOS API."""
+
+    message: str
