@@ -46,20 +46,20 @@ class RegisterProviders:  # pylint:disable=too-few-public-methods
                 self.logger.info("Registering execution space provider: %s", provider)
                 self.validate(provider, execution_space_provider_schema(provider))
                 self.root.join(f"execution-space/{provider['execution_space']['id']}").write(
-                    provider
+                    json.dumps(provider)
                 )
 
         if os.getenv("LOG_AREA_PROVIDERS"):
             for provider in self.providers(Path(os.getenv("LOG_AREA_PROVIDERS"))):
                 self.logger.info("Registering log area provider: %s", provider)
                 self.validate(provider, log_area_provider_schema(provider))
-                self.root.join(f"log-area/{provider['log']['id']}").write(provider)
+                self.root.join(f"log-area/{provider['log']['id']}").write(json.dumps(provider))
 
         if os.getenv("IUT_PROVIDERS"):
             for provider in self.providers(Path(os.getenv("IUT_PROVIDERS"))):
                 self.logger.info("Registering IUT provider: %s", provider)
                 self.validate(provider, iut_provider_schema(provider))
-                self.root.join(f"iut/{provider['iut']['id']}").write(provider)
+                self.root.join(f"iut/{provider['iut']['id']}").write(json.dumps(provider))
 
     def providers(self, directory: Path) -> Iterator[dict]:
         """Read provider json files from a directory.
