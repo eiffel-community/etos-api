@@ -28,4 +28,4 @@ opentelemetry-instrumentation-fastapi==0.44b0
 opentelemetry-sdk~=1.21
 jsontas~=1.4
 packageurl-python~=0.11
-cryptography~=41.0
+cryptography>=42.0.4,<43.0.0
