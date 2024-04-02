@@ -48,9 +48,15 @@ LOGGER = logging.getLogger(__name__)
 
 # Setting OTEL_COLLECTOR_HOST will override the default OTEL collector endpoint.
 # This is needed when using the centralized cluster-level OTEL collector instead of sidecar collector.
+<<<<<<< HEAD
 if os.getenv("OTEL_COLLECTOR_HOST"):
     os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = os.getenv("OTEL_COLLECTOR_HOST")
     LOGGER.info("Using OTEL collector: %s", os.getenv("OTEL_COLLECTOR_HOST"))
+=======
+# if os.getenv("OTEL_COLLECTOR_HOST"):
+#     os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = os.getenv("OTEL_COLLECTOR_HOST")
+#     LOGGER.info("Using OTEL collector: %s", os.getenv("OTEL_COLLECTOR_HOST"))
+>>>>>>> 5d5fd1d (Fixes for OpenTelemetry tracing)
 
 if os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"):
     PROVIDER = TracerProvider(
