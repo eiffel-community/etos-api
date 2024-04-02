@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API module."""
+import logging
 import os
 from importlib.metadata import PackageNotFoundError, version
 
@@ -42,6 +43,14 @@ except PackageNotFoundError:
 DEV = os.getenv("DEV", "false").lower() == "true"
 ENVIRONMENT = "development" if DEV else "production"
 setup_logging("ETOS API", VERSION, ENVIRONMENT)
+
+LOGGER = logging.getLogger(__name__)
+
+# Setting OTEL_COLLECTOR_HOST will override the default OTEL collector endpoint.
+# This is needed when using the centralized cluster-level OTEL collector instead of sidecar collector.
+if os.getenv("OTEL_COLLECTOR_HOST"):
+    os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = os.getenv("OTEL_COLLECTOR_HOST")
+    LOGGER.info("Using OTEL collector: %s", os.getenv("OTEL_COLLECTOR_HOST"))
 
 if os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"):
     PROVIDER = TracerProvider(

@@ -23,6 +23,7 @@ from etos_lib import ETOS
 from fastapi import APIRouter, HTTPException
 from kubernetes import client
 from opentelemetry import trace
+from opentelemetry.trace import Span
 
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
@@ -53,7 +54,7 @@ async def validate_suite(test_suite_url: str) -> None:
         ) from exception
 
 
-async def _start(etos: StartEtosRequest, span: "Span") -> dict:
+async def _start(etos: StartEtosRequest, span: Span) -> dict:
     """Start ETOS execution.
 
     :param etos: ETOS pydantic model.
