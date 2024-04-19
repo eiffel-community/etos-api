@@ -12,7 +12,7 @@
 # pip install -r requirements.txt
 # Remember to also add them in setup.cfg but unpinned.
 
-etos_lib==4.0.0
+etos_lib==4.1.1
 etcd3gw~=2.3
 pyscaffold~=4.4
 uvicorn~=0.22
@@ -24,7 +24,7 @@ kubernetes~=26.1
 sse-starlette~=1.6
 opentelemetry-api~=1.21
 opentelemetry-exporter-otlp~=1.21
-opentelemetry-instrumentation-fastapi==0.44b0
+opentelemetry-instrumentation-fastapi==0.45b0
 opentelemetry-sdk~=1.21
 jsontas~=1.4
 packageurl-python~=0.11
