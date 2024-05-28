@@ -1,7 +1,7 @@
 FROM golang:1.20-alpine AS build
 WORKDIR /tmp/sse
 COPY . .
-RUN apk add --no-cache make=4.4.1-r2 git=2.43.0-r0 && make build
+RUN apk add --no-cache make=4.4.1-r2 git=2.43.4-r0 && make build
 
 FROM alpine:3.17.3
 ARG TZ

@@ -1,10 +1,10 @@
-FROM python:3.9-buster AS build
+FROM python:3.9-bookworm AS build
 
 COPY . /src
 WORKDIR /src/python
 RUN python3 setup.py bdist_wheel
 
-FROM python:3.9-slim-buster
+FROM python:3.9-slim-bookworm
 ARG TZ
 ENV TZ=$TZ
 
