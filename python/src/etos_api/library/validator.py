@@ -15,6 +15,8 @@
 # limitations under the License.
 """ETOS API suite validator module."""
 import logging
+import asyncio
+import random
 from typing import List, Union
 from uuid import UUID
 
@@ -191,6 +193,13 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
+                for _ in range(3):
+                    result = await docker.pull(test_runner)
+                    if result:
+                        break
+
+                    await asyncio.sleep(random.randint(1, 3 ))
+
                 assert (
-                    await docker.digest(test_runner) is not None
+                    result is not None
                 ), f"Test runner {test_runner} not found"
