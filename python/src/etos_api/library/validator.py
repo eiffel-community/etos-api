@@ -193,11 +193,16 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
-                for _ in range(3):
+                for attempt in range(3):
                     result = await docker.digest(test_runner)
                     if result:
                         break
-
+                    else:
+                        self.logger.warning(
+                            "Test runner %s validation unsuccessful, retrying %d more times",
+                            test_runner,
+                            3 - attempt,
+                        )
                     await asyncio.sleep(random.randint(1, 3 ))
 
                 assert (
