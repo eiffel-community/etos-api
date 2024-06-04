@@ -194,7 +194,7 @@ class SuiteValidator:
             docker = Docker()
             for test_runner in test_runners:
                 for _ in range(3):
-                    result = await docker.pull(test_runner)
+                    result = await docker.digest(test_runner)
                     if result:
                         break
 
