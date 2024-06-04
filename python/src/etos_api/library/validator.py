@@ -197,14 +197,12 @@ class SuiteValidator:
                     result = await docker.digest(test_runner)
                     if result:
                         break
-                    else:
-                        self.logger.warning(
-                            "Test runner %s validation unsuccessful, retrying %d more times",
-                            test_runner,
-                            3 - attempt,
-                        )
-                    await asyncio.sleep(random.randint(1, 3 ))
 
-                assert (
-                    result is not None
-                ), f"Test runner {test_runner} not found"
+                    self.logger.warning(
+                        "Test runner %s validation unsuccessful, retrying %d more times",
+                        test_runner,
+                        3 - attempt,
+                    )
+                    await asyncio.sleep(random.randint(1, 3))
+
+                assert result is not None, f"Test runner {test_runner} not found"
