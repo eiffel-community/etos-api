@@ -12,7 +12,7 @@
 # pip install -r requirements.txt
 # Remember to also add them in setup.cfg but unpinned.
 
-etos_lib==4.1.1
+etos_lib==4.3.1
 etcd3gw~=2.3
 pyscaffold~=4.4
 uvicorn~=0.22
