@@ -26,6 +26,7 @@ import requests
 from pydantic import BaseModel  # pylint:disable=no-name-in-module
 from pydantic import ValidationError, conlist, constr, field_validator
 from pydantic.fields import PrivateAttr
+from opentelemetry import trace
 
 from etos_api.library.docker import Docker
 
@@ -181,6 +182,7 @@ class SuiteValidator:
         :type test_suite_url: str
         :raises ValidationError: If the suite did not validate.
         """
+        span = trace.get_current_span()
         downloaded_suite = await self._download_suite(test_suite_url)
         for suite_json in downloaded_suite:
             test_runners = set()
@@ -197,7 +199,9 @@ class SuiteValidator:
                     result = await docker.digest(test_runner)
                     if result:
                         break
-
+                    span.add_event(
+                        f"Test runner validation unsuccessful, retrying {3 - attempt} more times"
+                    )
                     self.logger.warning(
                         "Test runner %s validation unsuccessful, retrying %d more times",
                         test_runner,
