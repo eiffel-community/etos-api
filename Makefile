@@ -37,7 +37,7 @@ export EXTRA_DOCKER_ARGS
 $(strip $(1))-docker: $(strip $(1))
 	docker build . \
     $(EXTRA_DOCKER_ARGS) \
-		-f deploy/$(strip $(1))/Dockerfile \
+		-f deploy/etos-$(strip $(1))/Dockerfile \
 		-t $(DOCKER_REGISTRY)/$(DOCKER_NAMESPACE)/etos-$(strip $(1)):$(RELEASE_VERSION)
 endef
 
