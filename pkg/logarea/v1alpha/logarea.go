@@ -60,7 +60,7 @@ func (a *LogAreaApplication) Close() {
 // New returns a new LogAreaApplication object/struct.
 func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.Application {
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{"localhost:2379"},
+		Endpoints:   []string{cfg.DatabaseURI()},
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {

@@ -17,6 +17,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"os"
 )
 
@@ -27,6 +28,7 @@ type Config interface {
 	LogLevel() string
 	LogFilePath() string
 	ETOSNamespace() string
+	DatabaseURI() string
 }
 
 // cfg implements the Config interface.
@@ -36,6 +38,8 @@ type cfg struct {
 	logLevel      string
 	logFilePath   string
 	etosNamespace string
+	databaseHost  string
+	databasePort  string
 }
 
 // Get creates a config interface based on input parameters or environment variables.
@@ -47,6 +51,8 @@ func Get() Config {
 	flag.StringVar(&conf.logLevel, "loglevel", EnvOrDefault("LOGLEVEL", "INFO"), "Log level (TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, PANIC).")
 	flag.StringVar(&conf.logFilePath, "logfilepath", os.Getenv("LOG_FILE_PATH"), "Path, including filename, for the log files to create.")
 	flag.StringVar(&conf.etosNamespace, "etosnamespace", ReadNamespaceOrEnv("ETOS_NAMESPACE"), "Path, including filename, for the log files to create.")
+	flag.StringVar(&conf.databaseHost, "databasehost", EnvOrDefault("ETOS_ETCD_HOST", "etcd-client"), "Host to the database.")
+	flag.StringVar(&conf.databasePort, "databaseport", EnvOrDefault("ETOS_ETCD_PORT", "2379"), "Host to the database.")
 
 	flag.Parse()
 	return &conf
@@ -75,6 +81,11 @@ func (c *cfg) LogFilePath() string {
 // ETOSNamespace returns the ETOS namespace.
 func (c *cfg) ETOSNamespace() string {
 	return c.etosNamespace
+}
+
+// DatabaseURI returns the URI to the ETOS database.
+func (c *cfg) DatabaseURI() string {
+	return fmt.Sprintf("%s:%s", c.databaseHost, c.databasePort)
 }
 
 // EnvOrDefault will look up key in environment variables and return if it exists, else return the fallback value.
