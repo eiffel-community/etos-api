@@ -35,7 +35,7 @@ type Suite struct {
 }
 
 type LogArea struct {
-	Download Download `json:"download"`
+	Download []Download `json:"download"`
 }
 
 type Download struct {

@@ -107,6 +107,29 @@ type Directory struct {
 	Artifacts []Downloadable `json:"artifacts"`
 }
 
+// getDownloadURLs will request the log area and get the URLs for the artifacvts and logs, running a filter over them.
+func (h LogAreaHandler) getDownloadURLs(ctx context.Context, logger *logrus.Entry, subSuite []byte, download Download) (logs []Downloadable, artifacts []Downloadable, err error) {
+	response, err := download.Request.Do(ctx, logger)
+	if err != nil {
+		// HTTP error
+		return nil, nil, err
+	}
+	defer response.Body.Close()
+	jsondata, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	logUrls, err := download.Filters.Logs.Run(jsondata, response.Header, subSuite, download.Filters.BaseURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	artifactUrls, err := download.Filters.Artifacts.Run(jsondata, response.Header, subSuite, download.Filters.BaseURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return logUrls, artifactUrls, nil
+}
+
 // GetFileURLs is an endpoint for getting file URLs from a log area.
 func (h LogAreaHandler) GetFileURLs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Second*15)
@@ -137,37 +160,17 @@ func (h LogAreaHandler) GetFileURLs(w http.ResponseWriter, r *http.Request, ps h
 			w.Header().Add("Retry-After", "10")
 			return
 		}
-		response, err := suite.LogArea.Download.Request.Do(ctx, logger)
-		if err != nil {
-			// HTTP error
-			logger.WithError(err).Error("Failed to download")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Header().Add("Retry-After", "10")
-			return
-		}
-		defer response.Body.Close()
-		jsondata, err := io.ReadAll(response.Body)
-		if err != nil {
-			logger.WithError(err).Error("Failed to read response body")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Header().Add("Retry-After", "10")
-			return
-		}
-		logUrls, err := suite.LogArea.Download.Filters.Logs.Run(jsondata, response.Header, ev.Value, suite.LogArea.Download.Filters.BaseURL)
-		if err != nil {
-			// HTTP error
-			logger.WithError(err).Error("Failed to download")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Header().Add("Retry-After", "10")
-			return
-		}
-		artifactUrls, err := suite.LogArea.Download.Filters.Artifacts.Run(jsondata, response.Header, ev.Value, suite.LogArea.Download.Filters.BaseURL)
-		if err != nil {
-			// HTTP error
-			logger.WithError(err).Error("Failed to download")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Header().Add("Retry-After", "10")
-			return
+		var logUrls []Downloadable
+		var artifactUrls []Downloadable
+		for _, download := range suite.LogArea.Download {
+			logs, artifacts, err := h.getDownloadURLs(ctx, logger, ev.Value, download)
+			if err != nil {
+				logger.WithError(err).Error("Failed to download")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Header().Add("Retry-After", "10")
+			}
+			logUrls = append(logUrls, logs...)
+			artifactUrls = append(artifactUrls, artifacts...)
 		}
 		directories[suite.Name] = Directory{Logs: logUrls, Artifacts: artifactUrls}
 	}
