@@ -89,10 +89,11 @@ func (f Filter) Run(jsondata []byte, headers interface{}, suite []byte, baseURL 
 }
 
 type Request struct {
-	Auth   Auth                   `json:"auth,omitempty"`
-	URL    string                 `json:"url"`
-	Method string                 `json:"method"`
-	Params map[string]interface{} `json:"params,omitempty"`
+	Auth    Auth                   `json:"auth,omitempty"`
+	URL     string                 `json:"url"`
+	Method  string                 `json:"method"`
+	Headers map[string]string      `json:"headers,omitempty"`
+	Params  map[string]interface{} `json:"params,omitempty"`
 }
 
 // Do executes a request using the information in the Request part of the
@@ -108,6 +109,9 @@ func (r Request) Do(ctx context.Context, logger *logrus.Entry) (*http.Response, 
 	}
 	if (r.Auth != Auth{}) {
 		request.SetBasicAuth(r.Auth.Username, r.Auth.DecryptPassword(logger))
+	}
+	for key, value := range r.Headers {
+		request.Header.Add(key, value)
 	}
 
 	request.URL.RawQuery = query.Encode()
