@@ -69,3 +69,8 @@ func (c *cfg) LogFilePath() string {
 func (c *cfg) ETOSNamespace() string {
 	return c.etosNamespace
 }
+
+// DatabaseURI returns the URI to the ETOS database.
+func (c *cfg) DatabaseURI() string {
+	return "etcd-client:2379"
+}

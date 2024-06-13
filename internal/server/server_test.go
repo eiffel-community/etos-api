@@ -25,11 +25,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNewWebserver tests that a new webserver can be created and that it
+// TestNewWebService tests that a new webservice can be created and that it
 // implements the Server interface
-func TestNewWebserver(t *testing.T) {
+func TestNewWebService(t *testing.T) {
 	log := &logrus.Entry{}
 	cfg := testconfig.Get("", "", "", "", "")
-	webserver := NewWebserver(cfg, log, http.Handler(nil))
+	webserver := NewWebService(cfg, log, http.Handler(nil))
 	assert.Implements(t, (*Server)(nil), webserver)
 }
