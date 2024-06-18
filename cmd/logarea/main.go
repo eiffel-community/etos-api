@@ -60,7 +60,7 @@ func main() {
 	})
 
 	log.Info("Loading logarea routes")
-	v1AlphaLogArea := v1alpha.New(cfg, log, ctx)
+	v1AlphaLogArea := v1alpha.New(cfg, log)
 	defer v1AlphaLogArea.Close()
 
 	app := application.New(v1AlphaLogArea)

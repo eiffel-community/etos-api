@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"runtime"
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
@@ -32,21 +33,21 @@ import (
 )
 
 // REGEX for matching /testrun/tercc-id/suite/main-suite-id/subsuite/subsuite-id/suite.
-const REGEX = "/testrun/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/suite/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/subsuite/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/suite"
+const (
+	REGEX   = "/testrun/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/suite/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/subsuite/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/suite"
+	TIMEOUT = 15 * time.Second
+)
 
 type LogAreaApplication struct {
 	logger *logrus.Entry
 	cfg    config.Config
 	client *clientv3.Client
 	regex  *regexp.Regexp
-	ctx    context.Context
-	cancel context.CancelFunc
 }
 
 type LogAreaHandler struct {
 	logger *logrus.Entry
 	cfg    config.Config
-	ctx    context.Context
 	client *clientv3.Client
 	regex  *regexp.Regexp
 }
@@ -54,11 +55,10 @@ type LogAreaHandler struct {
 // Close cancels the application context and closes the ETCD client.
 func (a *LogAreaApplication) Close() {
 	a.client.Close()
-	a.cancel()
 }
 
 // New returns a new LogAreaApplication object/struct.
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.Application {
+func New(cfg config.Config, log *logrus.Entry) application.Application {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{cfg.DatabaseURI()},
 		DialTimeout: 5 * time.Second,
@@ -70,22 +70,19 @@ func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.
 	// MustCompile panics if the regular expression cannot be compiled.
 	// Since the regular expression is hard-coded, it should never fail in production.
 	regex := regexp.MustCompile(REGEX)
-	ctx, cancel := context.WithCancel(ctx)
 	return &LogAreaApplication{
 		logger: log,
 		cfg:    cfg,
 		client: cli,
 		regex:  regex,
-		ctx:    ctx,
-		cancel: cancel,
 	}
 }
 
 // LoadRoutes loads all the v1alpha routes.
 func (a LogAreaApplication) LoadRoutes(router *httprouter.Router) {
-	handler := &LogAreaHandler{a.logger, a.cfg, a.ctx, a.client, a.regex}
+	handler := &LogAreaHandler{a.logger, a.cfg, a.client, a.regex}
 	router.GET("/v1alpha/selftest/ping", handler.Selftest)
-	router.GET("/v1alpha/logarea/:identifier", handler.GetFileURLs)
+	router.GET("/v1alpha/logarea/:identifier", handler.panicRecovery(handler.timeoutHandler(handler.GetFileURLs)))
 }
 
 // Selftest is a handler to just return 204.
@@ -107,7 +104,7 @@ type Directory struct {
 	Artifacts []Downloadable `json:"artifacts"`
 }
 
-// getDownloadURLs will request the log area and get the URLs for the artifacvts and logs, running a filter over them.
+// getDownloadURLs will request the log area and get the URLs for the artifacts and logs, running a filter over them.
 func (h LogAreaHandler) getDownloadURLs(ctx context.Context, logger *logrus.Entry, subSuite []byte, download Download) (logs []Downloadable, artifacts []Downloadable, err error) {
 	response, err := download.Request.Do(ctx, logger)
 	if err != nil {
@@ -135,12 +132,12 @@ func (h LogAreaHandler) getDownloadURLs(ctx context.Context, logger *logrus.Entr
 
 // GetFileURLs is an endpoint for getting file URLs from a log area.
 func (h LogAreaHandler) GetFileURLs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*15)
-	defer cancel()
+	ctx := r.Context()
 	directories := make(Response)
 	identifier := ps.ByName("identifier")
 	// Making it possible for us to correlate logs to a specific connection
 	logger := h.logger.WithField("identifier", identifier)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	response, err := h.client.Get(ctx, fmt.Sprintf("/testrun/%s/suite", identifier), clientv3.WithPrefix())
 	if err != nil {
@@ -183,4 +180,43 @@ func (h LogAreaHandler) GetFileURLs(w http.ResponseWriter, r *http.Request, ps h
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp)
+}
+
+// timeoutHandler will change the request context to a timeout context.
+func (h LogAreaHandler) timeoutHandler(
+	fn func(http.ResponseWriter, *http.Request, httprouter.Params),
+) func(http.ResponseWriter, *http.Request, httprouter.Params) {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		ctx, cancel := context.WithTimeout(r.Context(), TIMEOUT)
+		defer cancel()
+		newRequest := r.WithContext(ctx)
+		fn(w, newRequest, ps)
+	}
+}
+
+// panicRecovery tracks panics from the service, logs them and returns an error response to the user.
+func (h LogAreaHandler) panicRecovery(
+	fn func(http.ResponseWriter, *http.Request, httprouter.Params),
+) func(http.ResponseWriter, *http.Request, httprouter.Params) {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		defer func() {
+			if err := recover(); err != nil {
+				buf := make([]byte, 2048)
+				n := runtime.Stack(buf, false)
+				buf = buf[:n]
+				h.logger.WithField(
+					"identifier", ps.ByName("identifier"),
+				).WithContext(
+					r.Context(),
+				).Errorf("recovering from err %+v\n %s", err, buf)
+				identifier := ps.ByName("identifier")
+
+				response, _ := json.Marshal(fmt.Sprintf("unknown error: contact server admin with id '%s'", identifier))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write(response)
+			}
+		}()
+		fn(w, r, ps)
+	}
 }

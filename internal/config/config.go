@@ -52,7 +52,7 @@ func Get() Config {
 	flag.StringVar(&conf.logFilePath, "logfilepath", os.Getenv("LOG_FILE_PATH"), "Path, including filename, for the log files to create.")
 	flag.StringVar(&conf.etosNamespace, "etosnamespace", ReadNamespaceOrEnv("ETOS_NAMESPACE"), "Path, including filename, for the log files to create.")
 	flag.StringVar(&conf.databaseHost, "databasehost", EnvOrDefault("ETOS_ETCD_HOST", "etcd-client"), "Host to the database.")
-	flag.StringVar(&conf.databasePort, "databaseport", EnvOrDefault("ETOS_ETCD_PORT", "2379"), "Host to the database.")
+	flag.StringVar(&conf.databasePort, "databaseport", EnvOrDefault("ETOS_ETCD_PORT", "2379"), "Port to the database.")
 
 	flag.Parse()
 	return &conf

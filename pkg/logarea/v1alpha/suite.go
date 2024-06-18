@@ -60,7 +60,7 @@ type Filter struct {
 }
 
 // Run the filters stored in the sub suite definition to get URLs from
-// a json blob, headers or the suite defintion (as json).
+// a json blob, headers or the suite definition (as json).
 func (f Filter) Run(jsondata []byte, headers interface{}, suite []byte, baseURL string) ([]Downloadable, error) {
 	urls := []Downloadable{}
 	for _, filter := range f.URLs {
@@ -125,7 +125,7 @@ type Auth struct {
 	AuthType string  `json:"type"`
 }
 
-// DecryptPassword decrypts the password in the suite definion using
+// DecryptPassword decrypts the password in the suite definition using
 // a decryption key that has been provided as an environment variable.
 func (a Auth) DecryptPassword(logger *logrus.Entry) string {
 	envKey := os.Getenv("ETOS_ENCRYPTION_KEY")
