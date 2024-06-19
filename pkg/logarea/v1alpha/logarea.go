@@ -119,7 +119,7 @@ func (h LogAreaHandler) getDownloadURLs(ctx context.Context, logger *logrus.Entr
 	}
 	logUrls, err := download.Filters.Logs.Run(jsondata, response.Header, subSuite, download.Filters.BaseURL)
 	if err != nil {
-		logger.Error("could not run filters on log URLs")
+		logger.WithError(err).Error("could not run filters on log URLs")
 		return nil, nil, err
 	}
 	artifactUrls, err := download.Filters.Artifacts.Run(jsondata, response.Header, subSuite, download.Filters.BaseURL)
@@ -132,7 +132,8 @@ func (h LogAreaHandler) getDownloadURLs(ctx context.Context, logger *logrus.Entr
 
 // GetFileURLs is an endpoint for getting file URLs from a log area.
 func (h LogAreaHandler) GetFileURLs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	defer cancel()
 	directories := make(Response)
 	identifier := ps.ByName("identifier")
 	// Making it possible for us to correlate logs to a specific connection
