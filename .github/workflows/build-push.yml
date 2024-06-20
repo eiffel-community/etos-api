@@ -111,10 +111,10 @@ jobs:
             },
             "manifests/base/deployment.yaml": {
               "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-api:${{ needs.build_api.outputs.apiVersion }}"
-            }
+            },
             "manifests/base/logarea/deployment.yaml": {
               "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-logarea:${{ needs.build_logarea.outputs.logAreaVersion }}"
-            },
+            }
           }
         branch: main
         commitChange: true
