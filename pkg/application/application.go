@@ -15,7 +15,9 @@
 // limitations under the License.
 package application
 
-import "github.com/julienschmidt/httprouter"
+import (
+	"github.com/julienschmidt/httprouter"
+)
 
 type Application interface {
 	LoadRoutes(*httprouter.Router)

@@ -55,6 +55,11 @@ func (c *cfg) ServicePort() string {
 	return c.servicePort
 }
 
+// StripPrefix returns an empty string.
+func (c *cfg) StripPrefix() string {
+	return ""
+}
+
 // LogLevel returns the Log level testconfig parameter
 func (c *cfg) LogLevel() string {
 	return c.logLevel

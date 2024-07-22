@@ -18,12 +18,12 @@ import logging
 
 from fastapi import FastAPI
 
-# from opentelemetry.sdk.trace import TracerProvider
 from starlette.responses import RedirectResponse
 
 from etos_api import routers
 
-APP = FastAPI()
+# This allows the path to start either at '/api' or '/'.
+APP = FastAPI(root_path="/api")
 LOGGER = logging.getLogger(__name__)
 
 
@@ -52,5 +52,6 @@ async def redirect_head_to_root():
 
 
 APP.include_router(routers.etos.ROUTER)
+APP.include_router(routers.testrun.ROUTER)
 APP.include_router(routers.selftest.ROUTER)
 APP.include_router(routers.logs.ROUTER)

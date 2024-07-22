@@ -33,8 +33,7 @@ class TestValidator:
     pytestmark = pytest.mark.asyncio
 
     @patch("etos_api.library.validator.Docker.digest")
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
-    async def test_validate_proper_suite(self, download_suite_mock, digest_mock):
+    async def test_validate_proper_suite(self, digest_mock):
         """Test that the validator validates a proper suite correctly.
 
         Approval criteria:
@@ -47,7 +46,7 @@ class TestValidator:
         digest_mock.return_value = (
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         )
-        download_suite_mock.return_value = [
+        test_suite = [
             {
                 "name": "TestValidator",
                 "priority": 1,
@@ -74,15 +73,14 @@ class TestValidator:
         self.logger.info("STEP: Validate a proper suite.")
         validator = SuiteValidator()
         try:
-            await validator.validate("url")
+            await validator.validate(test_suite)
             exception = False
         except (AssertionError, ValidationError):
             exception = True
         self.logger.info("STEP: Verify that no exceptions were raised.")
         assert exception is False
 
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
-    async def test_validate_missing_constraints(self, download_suite_mock):
+    async def test_validate_missing_constraints(self):
         """Test that the validator fails when missing required constraints.
 
         Approval criteria:
@@ -92,7 +90,7 @@ class TestValidator:
             1. Validate a suite with a missing constraint.
             2. Verify that the validator raises ValidationError.
         """
-        download_suite_mock.return_value = [
+        test_suite = [
             {
                 "name": "TestValidator",
                 "priority": 1,
@@ -118,15 +116,14 @@ class TestValidator:
         self.logger.info("STEP: Validate a suite with a missing constraint.")
         validator = SuiteValidator()
         try:
-            await validator.validate("url")
+            await validator.validate(test_suite)
             exception = False
         except ValidationError:
             exception = True
         self.logger.info("STEP: Verify that the validator raises ValidationError.")
         assert exception is True
 
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
-    async def test_validate_wrong_types(self, download_suite_mock):
+    async def test_validate_wrong_types(self):
         """Test that the validator fails when constraints have the wrong types.
 
         Approval criteria:
@@ -207,13 +204,11 @@ class TestValidator:
         for constraint in constraints:
             self.logger.info("STEP: Validate constraint with wrong type.")
             base_suite["recipes"][0]["constraints"] = constraint
-            download_suite_mock.return_value = [base_suite]
             self.logger.info("STEP: Verify that the validator raises ValidationError.")
             with pytest.raises(ValidationError):
-                await validator.validate("url")
+                await validator.validate([base_suite])
 
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
-    async def test_validate_too_many_constraints(self, download_suite_mock):
+    async def test_validate_too_many_constraints(self):
         """Test that the validator fails when a constraint is defined multiple times.
 
         Approval criteria:
@@ -223,7 +218,7 @@ class TestValidator:
             1. Validate a suite with a constraint defined multiple times.
             2. Verify that the validator raises ValidationError.
         """
-        download_suite_mock.return_value = [
+        test_suite = [
             {
                 "name": "TestValidator",
                 "priority": 1,
@@ -251,15 +246,14 @@ class TestValidator:
         self.logger.info("STEP: Validate a suite with a constraint defined multiple times.")
         validator = SuiteValidator()
         try:
-            await validator.validate("url")
+            await validator.validate(test_suite)
             exception = False
         except ValidationError:
             exception = True
         self.logger.info("STEP: Verify that the validator raises ValidationError.")
         assert exception is True
 
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
-    async def test_validate_unknown_constraint(self, download_suite_mock):
+    async def test_validate_unknown_constraint(self):
         """Test that the validator fails when an unknown constraint is defined.
 
         Approval criteria:
@@ -269,7 +263,7 @@ class TestValidator:
             1. Validate a suite with an unknown constraint.
             2. Verify that the validator raises ValidationError.
         """
-        download_suite_mock.return_value = [
+        test_suite = [
             {
                 "name": "TestValidator",
                 "priority": 1,
@@ -297,15 +291,14 @@ class TestValidator:
         self.logger.info("STEP: Validate a suite with an unknown constraint.")
         validator = SuiteValidator()
         try:
-            await validator.validate("url")
+            await validator.validate(test_suite)
             exception = False
         except TypeError:
             exception = True
         self.logger.info("STEP: Verify that the validator raises ValidationError.")
         assert exception is True
 
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
-    async def test_validate_empty_constraints(self, download_suite_mock):
+    async def test_validate_empty_constraints(self):
         """Test that required constraints are not empty.
 
         Approval criteria:
@@ -360,7 +353,6 @@ class TestValidator:
         validator = SuiteValidator()
         for constraint in constraints:
             base_suite["recipes"][0]["constraints"] = constraint
-            download_suite_mock.return_value = [base_suite]
             self.logger.info("STEP: Validate a suite without the required key.")
             with pytest.raises(ValidationError):
-                await validator.validate("url")
+                await validator.validate([base_suite])

@@ -140,7 +140,7 @@ class TestRouters(TestCase):
         assert response.status_code == 308
 
     @patch("etos_api.library.validator.Docker.digest")
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    @patch("etos_api.routers.etos.router.download_suite")
     @patch("etos_api.library.graphql.GraphqlQueryHandler.execute")
     def test_post_on_root_with_redirect(
         self, graphql_execute_mock, download_suite_mock, digest_mock
@@ -215,7 +215,7 @@ class TestRouters(TestCase):
         assert response.status_code == 200
 
     @patch("etos_api.library.validator.Docker.digest")
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    @patch("etos_api.routers.etos.router.download_suite")
     @patch("etos_api.library.graphql.GraphqlQueryHandler.execute")
     def test_start_etos(self, graphql_execute_mock, download_suite_mock, digest_mock):
         """Test that POST requests to /etos attempts to start ETOS tests.

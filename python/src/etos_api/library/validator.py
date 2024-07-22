@@ -18,8 +18,6 @@ import logging
 from typing import List, Union
 from uuid import UUID
 
-import requests
-
 # Pylint refrains from linting C extensions due to arbitrary code execution.
 from pydantic import BaseModel  # pylint:disable=no-name-in-module
 from pydantic import ValidationError, conlist, constr, field_validator
@@ -157,33 +155,14 @@ class SuiteValidator:
 
     logger = logging.getLogger(__name__)
 
-    async def _download_suite(self, test_suite_url):
-        """Attempt to download suite.
-
-        :param test_suite_url: URL to test suite to download.
-        :type test_suite_url: str
-        :return: Downloaded test suite as JSON.
-        :rtype: list
-        """
-        try:
-            suite = requests.get(test_suite_url, timeout=60)
-            suite.raise_for_status()
-        except Exception as exception:  # pylint:disable=broad-except
-            raise AssertionError(f"Unable to download suite from {test_suite_url}") from exception
-        return suite.json()
-
-    async def validate(self, test_suite_url):
+    async def validate(self, test_suite):
         """Validate the ETOS suite definition.
 
-        :param test_suite_url: URL to test suite that is being executed.
-        :type test_suite_url: str
+        :param test_suite: Test suite that is being executed.
+        :type test_suite: list
         :raises ValidationError: If the suite did not validate.
         """
-        downloaded_suite = await self._download_suite(test_suite_url)
-        assert (
-            len(downloaded_suite) > 0
-        ), "Suite definition validation unsuccessful - Reason: Empty Test suite definition list"
-        for suite_json in downloaded_suite:
+        for suite_json in test_suite:
             test_runners = set()
             suite = Suite(**suite_json)
             assert suite
