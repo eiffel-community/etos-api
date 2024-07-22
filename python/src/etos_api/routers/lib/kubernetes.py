@@ -17,18 +17,8 @@
 import logging
 import os
 
-from kubernetes import config
-
 NAMESPACE_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 LOGGER = logging.getLogger(__name__)
-
-try:
-    config.load_incluster_config()
-except config.ConfigException:
-    try:
-        config.load_config()
-    except config.ConfigException:
-        LOGGER.warning("Could not load a Kubernetes config")
 
 
 def namespace() -> str:

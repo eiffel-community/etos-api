@@ -27,3 +27,12 @@ rules:
     - get
     - list
     - watch
+  - apiGroups:
+    - "etos.eiffel-community.github.io"
+    resources:
+    - testruns
+    verbs:
+    - get
+    - delete
+    - list
+    - watch

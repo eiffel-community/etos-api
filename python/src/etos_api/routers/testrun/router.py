@@ -13,38 +13,42 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""ETOS API router."""
+"""ETOS testrun router."""
 import logging
 import os
 from uuid import uuid4
+from typing import Any
 
+import requests
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
 from fastapi import APIRouter, HTTPException
-from kubernetes import client
+from kubernetes import dynamic
+from kubernetes.client import api_client
 from opentelemetry import trace
 from opentelemetry.trace import Span
-import requests
 
-from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
 from etos_api.library.validator import SuiteValidator
 from etos_api.routers.lib.kubernetes import namespace
 
-from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
+from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
+from .testrun import TestRun, TestRunSpec, Providers
 from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
-TRACER = trace.get_tracer("etos_api.routers.etos.router")
+TRACER = trace.get_tracer("etos_api.routers.testrun.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
-async def download_suite(test_suite_url: str) -> dict:
+async def download_suite(test_suite_url):
     """Attempt to download suite.
 
     :param test_suite_url: URL to test suite to download.
+    :type test_suite_url: str
     :return: Downloaded test suite as JSON.
+    :rtype: list
     """
     try:
         suite = requests.get(test_suite_url, timeout=60)
@@ -54,7 +58,7 @@ async def download_suite(test_suite_url: str) -> dict:
     return suite.json()
 
 
-async def validate_suite(test_suite_url: str) -> None:
+async def validate_suite(test_suite: list[dict[str, Any]]) -> None:
     """Validate the ETOS test suite through the SuiteValidator.
 
     :param test_suite_url: The URL to the test suite to validate.
@@ -62,7 +66,6 @@ async def validate_suite(test_suite_url: str) -> None:
     span = trace.get_current_span()
 
     try:
-        test_suite = await download_suite(test_suite_url)
         await SuiteValidator().validate(test_suite)
     except AssertionError as exception:
         LOGGER.error("Test suite validation failed!")
@@ -73,10 +76,10 @@ async def validate_suite(test_suite_url: str) -> None:
         ) from exception
 
 
-async def _start(etos: StartEtosRequest, span: Span) -> dict:
-    """Start ETOS execution.
+async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
+    """Create a testrun for ETOS to execute.
 
-    :param etos: ETOS pydantic model.
+    :param etos: Testrun pydantic model.
     :param span: An opentelemetry span for tracing.
     :return: JSON dictionary with response.
     """
@@ -84,11 +87,15 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
     LOGGER.identifier.set(tercc.meta.event_id)
     span.set_attribute("etos.id", tercc.meta.event_id)
 
+    LOGGER.info("Download test suite.")
+    test_suite = await download_suite(etos.test_suite_url)
+    LOGGER.info("Test suite downloaded.")
+
     LOGGER.info("Validating test suite.")
-    await validate_suite(etos.test_suite_url)
+    await validate_suite(test_suite)
     LOGGER.info("Test suite validated.")
 
-    etos_library = ETOS("ETOS API", os.getenv("HOSTNAME"), "ETOS API")
+    etos_library = ETOS("ETOS API", os.getenv("HOSTNAME", "localhost"), "ETOS API")
     await sync_to_async(etos_library.config.rabbitmq_publisher_from_environment)
 
     LOGGER.info("Get artifact created %r", (etos.artifact_identity or str(etos.artifact_id)))
@@ -122,22 +129,6 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
         "selectionStrategy": {"tracker": "Suite Builder", "id": str(uuid4())},
         "batchesUri": etos.test_suite_url,
     }
-    config = Configuration(
-        suite_id=tercc.meta.event_id,
-        dataset=etos.dataset,
-        execution_space_provider=etos.execution_space_provider,
-        iut_provider=etos.iut_provider,
-        log_area_provider=etos.log_area_provider,
-    )
-    try:
-        await configure_testrun(config)
-    except AssertionError as exception:
-        LOGGER.critical(exception)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Could not configure environment provider. {exception}",
-        ) from exception
-    LOGGER.info("Environment provider configured.")
 
     LOGGER.info("Start event publisher.")
     await sync_to_async(etos_library.start_publisher)
@@ -154,6 +145,30 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
             await sync_to_async(etos_library.publisher.wait_close)
     LOGGER.info("Event published.")
 
+    testrun_spec = TestRun(
+        metadata={"name": f"testrun-{event.meta.event_id}", "namespace": namespace()},
+        spec=TestRunSpec(
+            id=event.meta.event_id,
+            suiteRunnerImage=os.getenv(
+                "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
+            ),
+            artifact=artifact_id,
+            identity=identity,
+            providers=Providers(
+                iut=etos.iut_provider,
+                executionSpace=etos.execution_space_provider,
+                logArea=etos.log_area_provider,
+            ),
+            suites=TestRunSpec.from_tercc(test_suite),
+        ),
+    )
+
+    k8s = dynamic.DynamicClient(api_client.ApiClient())
+    testrun = k8s.resources.get(
+        api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
+    )
+    testrun.create(body=testrun_spec.model_dump())
+
     LOGGER.info("ETOS triggered successfully.")
     return {
         "tercc": event.meta.event_id,
@@ -164,47 +179,37 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
 
 
 async def _abort(suite_id: str) -> dict:
+    """Abort a testrun by deleting the testrun resource."""
     ns = namespace()
 
-    batch_api = client.BatchV1Api()
-    jobs = batch_api.list_namespaced_job(namespace=ns)
-
-    delete_options = client.V1DeleteOptions(
-        propagation_policy="Background"  # asynchronous cascading deletion
+    k8s = dynamic.DynamicClient(api_client.ApiClient())
+    testrun_resource = k8s.resources.get(
+        api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
     )
-
-    for job in jobs.items:
-        if (
-            job.metadata.labels.get("app") == "suite-runner"
-            and job.metadata.labels.get("id") == suite_id
-        ):
-            batch_api.delete_namespaced_job(
-                name=job.metadata.name, namespace=ns, body=delete_options
-            )
-            LOGGER.info("Deleted suite-runner job: %s", job.metadata.name)
-            break
+    if testrun_resource.get(namespace=ns, name=f"testrun-{suite_id}"):
+        testrun_resource.delete(namespace=ns, name=f"testrun-{suite_id}")
     else:
         raise HTTPException(status_code=404, detail="Suite ID not found.")
 
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
-@ROUTER.post("/etos", tags=["etos"], response_model=StartEtosResponse)
-async def start_etos(etos: StartEtosRequest):
-    """Start ETOS execution on post.
+@ROUTER.post("/v1alpha/testrun", tags=["etos", "testrun"], response_model=StartTestrunResponse)
+async def start_testrun(etos: StartTestrunRequest):
+    """Start ETOS testrun on post.
 
     :param etos: ETOS pydantic model.
-    :type etos: :obj:`etos_api.routers.etos.schemas.StartEtosRequest`
+    :type etos: :obj:`etos_api.routers.etos.schemas.StartTestrunRequest`
     :return: JSON dictionary with response.
     :rtype: dict
     """
     with TRACER.start_as_current_span("start-etos") as span:
-        return await _start(etos, span)
+        return await _create_testrun(etos, span)
 
 
-@ROUTER.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
-async def abort_etos(suite_id: str):
-    """Abort ETOS execution on delete.
+@ROUTER.delete("/v1alpha/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
+async def abort_testrun(suite_id: str):
+    """Abort ETOS testrun on delete.
 
     :param suite_id: ETOS suite id
     :type suite_id: str
