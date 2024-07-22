@@ -20,19 +20,20 @@ rules:
     - list
     - watch
   - apiGroups:
+    - "etos.eiffel-community.github.io"
+    resources:
+    - testruns
+    verbs:
+    - create
+    - get
+    - delete
+    - list
+    - watch
+  - apiGroups:
     - ""
     resources:
     - pods
     verbs:
     - get
-    - list
-    - watch
-  - apiGroups:
-    - "etos.eiffel-community.github.io"
-    resources:
-    - testruns
-    verbs:
-    - get
-    - delete
     - list
     - watch
