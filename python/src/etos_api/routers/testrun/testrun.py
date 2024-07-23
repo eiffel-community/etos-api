@@ -124,6 +124,7 @@ class Providers(BaseModel):
 class TestRunSpec(BaseModel):
     """TestRunSpec is the specification of a TestRun Kubernetes resource."""
 
+    cluster: str
     artifact: str
     suiteRunnerImage: str
     id: str

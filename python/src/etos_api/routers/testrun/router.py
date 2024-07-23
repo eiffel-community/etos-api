@@ -148,6 +148,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     testrun_spec = TestRun(
         metadata={"name": f"testrun-{event.meta.event_id}", "namespace": namespace()},
         spec=TestRunSpec(
+            cluster=os.getenv("ETOS_CLUSTER"),
             id=event.meta.event_id,
             suiteRunnerImage=os.getenv(
                 "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
