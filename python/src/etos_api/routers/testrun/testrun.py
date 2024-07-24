@@ -121,12 +121,17 @@ class Providers(BaseModel):
     iut: Optional[str] = "default"
 
 
+class Image(BaseModel):
+    image: str
+    imagePullPolicy: str = "IfNotPresent"
+
 class TestRunSpec(BaseModel):
     """TestRunSpec is the specification of a TestRun Kubernetes resource."""
 
     cluster: str
     artifact: str
-    suiteRunnerImage: str
+    suiteRunner: Image
+    environmentProvider: Image
     id: str
     identity: str
     providers: Providers

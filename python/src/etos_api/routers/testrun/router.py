@@ -33,7 +33,7 @@ from etos_api.library.validator import SuiteValidator
 from etos_api.routers.lib.kubernetes import namespace
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
-from .testrun import TestRun, TestRunSpec, Providers
+from .testrun import TestRun, TestRunSpec, Providers, Image
 from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
@@ -150,8 +150,13 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         spec=TestRunSpec(
             cluster=os.getenv("ETOS_CLUSTER"),
             id=event.meta.event_id,
-            suiteRunnerImage=os.getenv(
-                "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
+            suiteRunner=Image(
+                image=os.getenv("SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"),
+                imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
+            ),
+            environmentProvider=Image(
+                image=os.getenv("ENVIRONMENT_PROVIDER_IMAGE", "registry.nordix.org/eiffel/etos-environment-provider:latest"),
+                imagePullPolicy=os.getenv("ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"),
             ),
             artifact=artifact_id,
             identity=identity,
