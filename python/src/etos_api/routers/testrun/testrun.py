@@ -49,6 +49,7 @@ class Execution(BaseModel):
 class Test(BaseModel):
     """Test describes the environment and execution of a test case."""
 
+    id: str
     environment: Environment
     execution: Execution
     testCase: TestCase
@@ -105,12 +106,14 @@ class Suite(BaseModel):
                     execution["testRunner"] = constraint.get("value", "")
             tests.append(
                 Test(
+                    id=recipe.get("id", ""),
                     environment=Environment(),
                     testCase=TestCase(**recipe.get("testCase", {})),
                     execution=Execution(**execution),
                 )
             )
         return tests
+
 
 
 class Providers(BaseModel):

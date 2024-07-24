@@ -237,3 +237,60 @@ async def abort_testrun(suite_id: str):
     """
     with TRACER.start_as_current_span("abort-etos"):
         return await _abort(suite_id)
+
+@ROUTER.get("/v1alpha/testrun/{sub_suite_id}", tags=["etos"])
+async def get_subsuite(sub_suite_id: str) -> dict:
+    """Get sub suite returns the sub suite definition for the ETOS test runner.
+
+    :param sub_suite_id: The name of the Environment kubernetes resource.
+    :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
+    """
+    k8s = dynamic.DynamicClient(api_client.ApiClient())
+    environments = k8s.resources.get(
+        api_version="etos.eiffel-community.github.io/v1alpha1", kind="Environment"
+    )
+    environment_resource = environments.get(name=sub_suite_id, namespace=namespace())
+    environment_spec = environment_resource.to_dict().get("spec", {})
+    recipes = await recipes_from_tests(environment_spec["recipes"])
+    environment_spec["recipes"] = recipes
+    return environment_spec
+
+async def recipes_from_tests(tests: list[dict]) -> list[dict]:
+    """Load Eiffel TERCC recipes from test.
+
+    :param tests: The tests defined in a Test model.
+    :return: A list of Eiffel TERCC recipes.
+    """
+    recipes: list[dict] = []
+    for test in tests:
+        recipes.append({
+            "id": test["id"],
+            "testCase": test["testCase"],
+            "constraints": [
+                {
+                    "key": "ENVIRONMENT",
+                    "value": test["execution"]["environment"],
+                },
+                {
+                    "key": "COMMAND",
+                    "value": test["execution"]["command"],
+                },
+                {
+                    "key": "EXECUTE",
+                    "value": test["execution"]["execute"],
+                },
+                {
+                    "key": "CHECKOUT",
+                    "value": test["execution"]["checkout"],
+                },
+                {
+                    "key": "PARAMETERS",
+                    "value": test["execution"]["parameters"],
+                },
+                {
+                    "key": "TEST_RUNNER",
+                    "value": test["execution"]["testRunner"],
+                },
+            ],
+        })
+    return recipes
