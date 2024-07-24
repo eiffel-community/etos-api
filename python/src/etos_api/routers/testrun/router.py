@@ -20,7 +20,7 @@ from uuid import uuid4
 from typing import Any
 
 import requests
-from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
+from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent, EiffelActivityTriggeredEvent
 from etos_lib import ETOS
 from fastapi import APIRouter, HTTPException
 from kubernetes import dynamic
@@ -138,42 +138,55 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     LOGGER.info("Publish TERCC event.")
     try:
         event = etos_library.events.send(tercc, links, data)
+        LOGGER.info("Event published.")
+
+        testrun_spec = TestRun(
+            metadata={"name": f"testrun-{event.meta.event_id}", "namespace": namespace()},
+            spec=TestRunSpec(
+                cluster=os.getenv("ETOS_CLUSTER"),
+                id=event.meta.event_id,
+                suiteRunner=Image(
+                    image=os.getenv("SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"),
+                    imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
+                ),
+                environmentProvider=Image(
+                    image=os.getenv("ENVIRONMENT_PROVIDER_IMAGE", "registry.nordix.org/eiffel/etos-environment-provider:latest"),
+                    imagePullPolicy=os.getenv("ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"),
+                ),
+                artifact=artifact_id,
+                identity=identity,
+                providers=Providers(
+                    iut=etos.iut_provider,
+                    executionSpace=etos.execution_space_provider,
+                    logArea=etos.log_area_provider,
+                ),
+                suites=TestRunSpec.from_tercc(test_suite),
+            ),
+        )
+
+        k8s = dynamic.DynamicClient(api_client.ApiClient())
+        testrun = k8s.resources.get(
+            api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
+        )
+        testrun.create(body=testrun_spec.model_dump())
+
+        activity_name = f"testrun-{event.meta.event_id}"
+        links = {
+            "CAUSE": [
+                event.meta.event_id,
+                artifact_id,
+            ]
+        }
+        data = {
+            "name": activity_name
+        }
+        activity = EiffelActivityTriggeredEvent()
+        event = etos_library.events.send(activity, links, data)
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
     finally:
         if not etos_library.debug.disable_sending_events:
             await sync_to_async(etos_library.publisher.stop)
             await sync_to_async(etos_library.publisher.wait_close)
-    LOGGER.info("Event published.")
-
-    testrun_spec = TestRun(
-        metadata={"name": f"testrun-{event.meta.event_id}", "namespace": namespace()},
-        spec=TestRunSpec(
-            cluster=os.getenv("ETOS_CLUSTER"),
-            id=event.meta.event_id,
-            suiteRunner=Image(
-                image=os.getenv("SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"),
-                imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
-            ),
-            environmentProvider=Image(
-                image=os.getenv("ENVIRONMENT_PROVIDER_IMAGE", "registry.nordix.org/eiffel/etos-environment-provider:latest"),
-                imagePullPolicy=os.getenv("ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"),
-            ),
-            artifact=artifact_id,
-            identity=identity,
-            providers=Providers(
-                iut=etos.iut_provider,
-                executionSpace=etos.execution_space_provider,
-                logArea=etos.log_area_provider,
-            ),
-            suites=TestRunSpec.from_tercc(test_suite),
-        ),
-    )
-
-    k8s = dynamic.DynamicClient(api_client.ApiClient())
-    testrun = k8s.resources.get(
-        api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
-    )
-    testrun.create(body=testrun_spec.model_dump())
 
     LOGGER.info("ETOS triggered successfully.")
     return {
