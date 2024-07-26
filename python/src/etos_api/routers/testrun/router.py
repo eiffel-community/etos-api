@@ -22,6 +22,8 @@ from typing import Any
 import requests
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent, EiffelActivityTriggeredEvent
 from etos_lib import ETOS
+from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema, TestRunSpec, Providers, Image
+from etos_lib.kubernetes import TestRun, Kubernetes
 from fastapi import APIRouter, HTTPException
 from kubernetes import dynamic
 from kubernetes.client import api_client
@@ -33,7 +35,6 @@ from etos_api.library.validator import SuiteValidator
 from etos_api.routers.lib.kubernetes import namespace
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
-from .testrun import TestRun, TestRunSpec, Providers, Image
 from .utilities import wait_for_artifact_created
 
 ROUTER = APIRouter()
@@ -140,7 +141,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         event = etos_library.events.send(tercc, links, data)
         LOGGER.info("Event published.")
 
-        testrun_spec = TestRun(
+        testrun_spec = TestRunSchema(
             metadata={"name": f"testrun-{event.meta.event_id}", "namespace": namespace()},
             spec=TestRunSpec(
                 cluster=os.getenv("ETOS_CLUSTER"),
@@ -164,11 +165,15 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             ),
         )
 
-        k8s = dynamic.DynamicClient(api_client.ApiClient())
-        testrun = k8s.resources.get(
-            api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
-        )
-        testrun.create(body=testrun_spec.model_dump())
+        # k8s = dynamic.DynamicClient(api_client.ApiClient())
+        # testrun = k8s.resources.get(
+        #     api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
+        # )
+        # testrun.create(body=testrun_spec.model_dump())
+        testrun_client = TestRun(Kubernetes())
+        if not testrun_client.create(testrun_spec):
+            # TODO:
+            raise Exception("Failed")
 
         activity_name = f"testrun-{event.meta.event_id}"
         links = {
