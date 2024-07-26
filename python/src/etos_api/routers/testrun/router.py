@@ -20,9 +20,17 @@ from uuid import uuid4
 from typing import Any
 
 import requests
-from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent, EiffelActivityTriggeredEvent
+from eiffellib.events import (
+    EiffelTestExecutionRecipeCollectionCreatedEvent,
+)
 from etos_lib import ETOS
-from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema, TestRunSpec, Providers, Image, Metadata
+from etos_lib.kubernetes.schemas.testrun import (
+    TestRun as TestRunSchema,
+    TestRunSpec,
+    Providers,
+    Image,
+    Metadata,
+)
 from etos_lib.kubernetes import TestRun, Kubernetes
 from fastapi import APIRouter, HTTPException
 from kubernetes import dynamic
@@ -151,12 +159,19 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                 cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
                 id=testrun_id,
                 suiteRunner=Image(
-                    image=os.getenv("SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"),
+                    image=os.getenv(
+                        "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
+                    ),
                     imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
                 ),
                 environmentProvider=Image(
-                    image=os.getenv("ENVIRONMENT_PROVIDER_IMAGE", "registry.nordix.org/eiffel/etos-environment-provider:latest"),
-                    imagePullPolicy=os.getenv("ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"),
+                    image=os.getenv(
+                        "ENVIRONMENT_PROVIDER_IMAGE",
+                        "registry.nordix.org/eiffel/etos-environment-provider:latest",
+                    ),
+                    imagePullPolicy=os.getenv(
+                        "ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"
+                    ),
                 ),
                 artifact=artifact_id,
                 identity=identity,
@@ -228,6 +243,7 @@ async def abort_testrun(suite_id: str):
     with TRACER.start_as_current_span("abort-etos"):
         return await _abort(suite_id)
 
+
 @ROUTER.get("/v1alpha/testrun/{sub_suite_id}", tags=["etos"])
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
@@ -235,15 +251,15 @@ async def get_subsuite(sub_suite_id: str) -> dict:
     :param sub_suite_id: The name of the Environment kubernetes resource.
     :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
-    k8s = dynamic.DynamicClient(api_client.ApiClient())
-    environments = k8s.resources.get(
-        api_version="etos.eiffel-community.github.io/v1alpha1", kind="Environment"
-    )
-    environment_resource = environments.get(name=sub_suite_id, namespace=namespace())
+    environment_client = TestRun(Kubernetes())
+    environment_resource = environment_client.get(sub_suite_id)
+    if not environment_resource:
+        raise HTTPException(400, "Failed to get environment")
     environment_spec = environment_resource.to_dict().get("spec", {})
     recipes = await recipes_from_tests(environment_spec["recipes"])
     environment_spec["recipes"] = recipes
     return environment_spec
+
 
 async def recipes_from_tests(tests: list[dict]) -> list[dict]:
     """Load Eiffel TERCC recipes from test.
@@ -253,34 +269,36 @@ async def recipes_from_tests(tests: list[dict]) -> list[dict]:
     """
     recipes: list[dict] = []
     for test in tests:
-        recipes.append({
-            "id": test["id"],
-            "testCase": test["testCase"],
-            "constraints": [
-                {
-                    "key": "ENVIRONMENT",
-                    "value": test["execution"]["environment"],
-                },
-                {
-                    "key": "COMMAND",
-                    "value": test["execution"]["command"],
-                },
-                {
-                    "key": "EXECUTE",
-                    "value": test["execution"]["execute"],
-                },
-                {
-                    "key": "CHECKOUT",
-                    "value": test["execution"]["checkout"],
-                },
-                {
-                    "key": "PARAMETERS",
-                    "value": test["execution"]["parameters"],
-                },
-                {
-                    "key": "TEST_RUNNER",
-                    "value": test["execution"]["testRunner"],
-                },
-            ],
-        })
+        recipes.append(
+            {
+                "id": test["id"],
+                "testCase": test["testCase"],
+                "constraints": [
+                    {
+                        "key": "ENVIRONMENT",
+                        "value": test["execution"]["environment"],
+                    },
+                    {
+                        "key": "COMMAND",
+                        "value": test["execution"]["command"],
+                    },
+                    {
+                        "key": "EXECUTE",
+                        "value": test["execution"]["execute"],
+                    },
+                    {
+                        "key": "CHECKOUT",
+                        "value": test["execution"]["checkout"],
+                    },
+                    {
+                        "key": "PARAMETERS",
+                        "value": test["execution"]["parameters"],
+                    },
+                    {
+                        "key": "TEST_RUNNER",
+                        "value": test["execution"]["testRunner"],
+                    },
+                ],
+            }
+        )
     return recipes
