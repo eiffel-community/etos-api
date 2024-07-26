@@ -30,8 +30,8 @@ class TestCase(BaseModel):
     """TestCase holds meta information about a testcase to run."""
 
     id: str
-    tracker: str
-    url: str
+    tracker: Optional[str] = None
+    uri: Optional[str] = None
     version: Optional[str] = "master"
 
 
@@ -104,11 +104,14 @@ class Suite(BaseModel):
                     execution["checkout"] = constraint.get("value", [])
                 elif constraint.get("key") == "TEST_RUNNER":
                     execution["testRunner"] = constraint.get("value", "")
+            testcase = recipe.get("testCase", {})
+            if testcase.get("url") is not None:
+                testcase["uri"] = testcase.pop("url")
             tests.append(
                 Test(
                     id=recipe.get("id", ""),
                     environment=Environment(),
-                    testCase=TestCase(**recipe.get("testCase", {})),
+                    testCase=TestCase(**testcase),
                     execution=Execution(**execution),
                 )
             )
