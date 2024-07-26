@@ -18,7 +18,7 @@ import os
 from kubernetes import config
 from . import etos, testrun, logs, selftest
 
-if os.getenv("TESTING") is None:
+if os.getenv("RUNNING_TESTS") is None:
     try:
         config.load_incluster_config()
     except config.ConfigException:
