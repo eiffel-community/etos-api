@@ -31,10 +31,8 @@ from etos_lib.kubernetes.schemas.testrun import (
     Image,
     Metadata,
 )
-from etos_lib.kubernetes import TestRun, Kubernetes
+from etos_lib.kubernetes import TestRun, Environment, Kubernetes
 from fastapi import APIRouter, HTTPException
-from kubernetes import dynamic
-from kubernetes.client import api_client
 from opentelemetry import trace
 from opentelemetry.trace import Span
 
@@ -180,7 +178,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                     executionSpace=etos.execution_space_provider,
                     logArea=etos.log_area_provider,
                 ),
-                suites=TestRunSpec.from_tercc(test_suite),
+                suites=TestRunSpec.from_tercc(test_suite, etos.dataset),
             ),
         )
 
@@ -204,17 +202,12 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
 
 async def _abort(suite_id: str) -> dict:
     """Abort a testrun by deleting the testrun resource."""
-    ns = namespace()
-
-    k8s = dynamic.DynamicClient(api_client.ApiClient())
-    testrun_resource = k8s.resources.get(
-        api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
-    )
-    if testrun_resource.get(namespace=ns, name=f"testrun-{suite_id}"):
-        testrun_resource.delete(namespace=ns, name=f"testrun-{suite_id}")
+    testrun_client = TestRun(Kubernetes())
+    testrun_name = f"testrun-{suite_id}"
+    if testrun_client.get(testrun_name):
+        testrun_client.delete(testrun_name)
     else:
         raise HTTPException(status_code=404, detail="Suite ID not found.")
-
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
@@ -251,10 +244,10 @@ async def get_subsuite(sub_suite_id: str) -> dict:
     :param sub_suite_id: The name of the Environment kubernetes resource.
     :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
-    environment_client = TestRun(Kubernetes())
+    environment_client = Environment(Kubernetes())
     environment_resource = environment_client.get(sub_suite_id)
     if not environment_resource:
-        raise HTTPException(400, "Failed to get environment")
+        raise HTTPException(404, "Failed to get environment")
     environment_spec = environment_resource.to_dict().get("spec", {})
     recipes = await recipes_from_tests(environment_spec["recipes"])
     environment_spec["recipes"] = recipes
