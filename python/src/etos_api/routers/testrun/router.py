@@ -139,7 +139,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     LOGGER.info("Event published started successfully.")
     LOGGER.info("Publish TERCC event.")
     try:
-        event = etos_library.events.send(tercc, links, data)
+        etos_library.events.send(tercc, links, data)
         LOGGER.info("Event published.")
 
         testrun_spec = TestRunSchema(
@@ -169,28 +169,9 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             ),
         )
 
-        # k8s = dynamic.DynamicClient(api_client.ApiClient())
-        # testrun = k8s.resources.get(
-        #     api_version="etos.eiffel-community.github.io/v1alpha1", kind="TestRun"
-        # )
-        # testrun.create(body=testrun_spec.model_dump())
         testrun_client = TestRun(Kubernetes())
         if not testrun_client.create(testrun_spec):
-            # TODO:
-            raise Exception("Failed")
-
-        # activity_name = f"testrun-{testrun_id}"
-        # links = {
-        #     "CAUSE": [
-        #         testrun_id,
-        #         artifact_id,
-        #     ]
-        # }
-        # data = {
-        #     "name": activity_name
-        # }
-        # activity = EiffelActivityTriggeredEvent()
-        # event = etos_library.events.send(activity, links, data)
+            raise HTTPException("Failed to create testrun")
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
     finally:
         if not etos_library.debug.disable_sending_events:
