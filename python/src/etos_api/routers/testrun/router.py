@@ -22,7 +22,7 @@ from typing import Any
 import requests
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent, EiffelActivityTriggeredEvent
 from etos_lib import ETOS
-from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema, TestRunSpec, Providers, Image
+from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema, TestRunSpec, Providers, Image, Metadata
 from etos_lib.kubernetes import TestRun, Kubernetes
 from fastapi import APIRouter, HTTPException
 from kubernetes import dynamic
@@ -85,8 +85,9 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     :return: JSON dictionary with response.
     """
     tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
-    LOGGER.identifier.set(tercc.meta.event_id)
-    span.set_attribute("etos.id", tercc.meta.event_id)
+    testrun_id = tercc.meta.event_id
+    LOGGER.identifier.set(testrun_id)
+    span.set_attribute("etos.id", testrun_id)
 
     LOGGER.info("Download test suite.")
     test_suite = await download_suite(etos.test_suite_url)
@@ -142,10 +143,13 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         LOGGER.info("Event published.")
 
         testrun_spec = TestRunSchema(
-            metadata={"name": f"testrun-{event.meta.event_id}", "namespace": namespace()},
+            metadata=Metadata(
+                name=f"testrun-{testrun_id}",
+                namespace=namespace(),
+            ),
             spec=TestRunSpec(
-                cluster=os.getenv("ETOS_CLUSTER"),
-                id=event.meta.event_id,
+                cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
+                id=testrun_id,
                 suiteRunner=Image(
                     image=os.getenv("SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"),
                     imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
@@ -175,18 +179,18 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             # TODO:
             raise Exception("Failed")
 
-        activity_name = f"testrun-{event.meta.event_id}"
-        links = {
-            "CAUSE": [
-                event.meta.event_id,
-                artifact_id,
-            ]
-        }
-        data = {
-            "name": activity_name
-        }
-        activity = EiffelActivityTriggeredEvent()
-        event = etos_library.events.send(activity, links, data)
+        # activity_name = f"testrun-{testrun_id}"
+        # links = {
+        #     "CAUSE": [
+        #         testrun_id,
+        #         artifact_id,
+        #     ]
+        # }
+        # data = {
+        #     "name": activity_name
+        # }
+        # activity = EiffelActivityTriggeredEvent()
+        # event = etos_library.events.send(activity, links, data)
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
     finally:
         if not etos_library.debug.disable_sending_events:
@@ -195,7 +199,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
 
     LOGGER.info("ETOS triggered successfully.")
     return {
-        "tercc": event.meta.event_id,
+        "tercc": testrun_id,
         "artifact_id": artifact_id,
         "artifact_identity": identity,
         "event_repository": etos_library.debug.graphql_server,
