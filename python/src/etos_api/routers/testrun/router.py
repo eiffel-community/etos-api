@@ -162,6 +162,12 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                     ),
                     imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
                 ),
+                logListener=Image(
+                    image=os.getenv(
+                        "LOG_LISTENER_IMAGE", "registry.nordix.org/eiffel/etos-log-listener:latest"
+                    ),
+                    imagePullPolicy=os.getenv("LOG_LISTENER_IMAGE_PULL_POLICY", "IfNotPresent"),
+                ),
                 environmentProvider=Image(
                     image=os.getenv(
                         "ENVIRONMENT_PROVIDER_IMAGE",
