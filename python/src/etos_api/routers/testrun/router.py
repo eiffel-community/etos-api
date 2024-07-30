@@ -188,7 +188,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             ),
         )
 
-        testrun_client = TestRun(Kubernetes())
+        testrun_client = TestRun(Kubernetes(), strict=True)
         if not testrun_client.create(testrun_spec):
             raise HTTPException("Failed to create testrun")
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
