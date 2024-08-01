@@ -16,13 +16,11 @@
 """ETOS testrun router."""
 import logging
 import os
+import re
 from uuid import uuid4
 from typing import Any
 
 import requests
-from eiffellib.events import (
-    EiffelTestExecutionRecipeCollectionCreatedEvent,
-)
 from etos_lib import ETOS
 from etos_lib.kubernetes.schemas.testrun import (
     TestRun as TestRunSchema,
@@ -36,7 +34,6 @@ from fastapi import APIRouter, HTTPException
 from opentelemetry import trace
 from opentelemetry.trace import Span
 
-from etos_api.library.utilities import sync_to_async
 from etos_api.library.validator import SuiteValidator
 from etos_api.routers.lib.kubernetes import namespace
 
@@ -91,8 +88,6 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     :return: JSON dictionary with response.
     """
     testrun_id = str(uuid4())
-    # tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
-    # testrun_id = tercc.meta.event_id
     LOGGER.identifier.set(testrun_id)
     span.set_attribute("etos.id", testrun_id)
 
@@ -132,10 +127,24 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     span.set_attribute("etos.artifact.id", artifact_id)
     span.set_attribute("etos.artifact.identity", identity)
 
+    try:
+        name = test_suite[0].get("name")
+        # Convert to kubernetes accepted name
+        name = re.sub(r'[^a-zA-Z0-9]+', '-', name).lower()
+        if not name.endswith("-"):
+            name = f"{name}-"
+    except (IndexError, TypeError, ValueError):
+        name = f"testrun-{testrun_id}-"
+        LOGGER.error("Could not get name from test suite, defaulting to %s", name)
+
     testrun_spec = TestRunSchema(
         metadata=Metadata(
-            name=f"testrun-{testrun_id}",
+            generateName=name,
             namespace=namespace(),
+            labels={
+                "etos.eiffel-community.github.io/id": testrun_id,
+                "etos.eiffel-community.github.io/cluster": os.getenv("ETOS_CLUSTER", "Unknown"),
+            },
         ),
         spec=TestRunSpec(
             cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
@@ -189,7 +198,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
 async def _abort(suite_id: str) -> dict:
     """Abort a testrun by deleting the testrun resource."""
     testrun_client = TestRun(Kubernetes())
-    testrun_name = f"testrun-{suite_id}"
+    testrun_name = f"testrun-{suite_id}"  # TODO
     if testrun_client.get(testrun_name):
         testrun_client.delete(testrun_name)
     else:
