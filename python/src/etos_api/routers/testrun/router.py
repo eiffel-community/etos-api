@@ -90,8 +90,9 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     :param span: An opentelemetry span for tracing.
     :return: JSON dictionary with response.
     """
-    tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
-    testrun_id = tercc.meta.event_id
+    testrun_id = str(uuid4())
+    # tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
+    # testrun_id = tercc.meta.event_id
     LOGGER.identifier.set(testrun_id)
     span.set_attribute("etos.id", testrun_id)
 
@@ -104,7 +105,6 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     LOGGER.info("Test suite validated.")
 
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME", "localhost"), "ETOS API")
-    await sync_to_async(etos_library.config.rabbitmq_publisher_from_environment)
 
     LOGGER.info("Get artifact created %r", (etos.artifact_identity or str(etos.artifact_id)))
     try:
@@ -132,70 +132,50 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     span.set_attribute("etos.artifact.id", artifact_id)
     span.set_attribute("etos.artifact.identity", identity)
 
-    links = {"CAUSE": artifact_id}
-    data = {
-        "selectionStrategy": {"tracker": "Suite Builder", "id": str(uuid4())},
-        "batchesUri": etos.test_suite_url,
-    }
-
-    LOGGER.info("Start event publisher.")
-    await sync_to_async(etos_library.start_publisher)
-    if not etos_library.debug.disable_sending_events:
-        await sync_to_async(etos_library.publisher.wait_start)
-    LOGGER.info("Event published started successfully.")
-    LOGGER.info("Publish TERCC event.")
-    try:
-        etos_library.events.send(tercc, links, data)
-        LOGGER.info("Event published.")
-
-        testrun_spec = TestRunSchema(
-            metadata=Metadata(
-                name=f"testrun-{testrun_id}",
-                namespace=namespace(),
+    testrun_spec = TestRunSchema(
+        metadata=Metadata(
+            name=f"testrun-{testrun_id}",
+            namespace=namespace(),
+        ),
+        spec=TestRunSpec(
+            cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
+            id=testrun_id,
+            suiteRunner=Image(
+                image=os.getenv(
+                    "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
+                ),
+                imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
             ),
-            spec=TestRunSpec(
-                cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
-                id=testrun_id,
-                suiteRunner=Image(
-                    image=os.getenv(
-                        "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
-                    ),
-                    imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
+            logListener=Image(
+                image=os.getenv(
+                    "LOG_LISTENER_IMAGE", "registry.nordix.org/eiffel/etos-log-listener:latest"
                 ),
-                logListener=Image(
-                    image=os.getenv(
-                        "LOG_LISTENER_IMAGE", "registry.nordix.org/eiffel/etos-log-listener:latest"
-                    ),
-                    imagePullPolicy=os.getenv("LOG_LISTENER_IMAGE_PULL_POLICY", "IfNotPresent"),
-                ),
-                environmentProvider=Image(
-                    image=os.getenv(
-                        "ENVIRONMENT_PROVIDER_IMAGE",
-                        "registry.nordix.org/eiffel/etos-environment-provider:latest",
-                    ),
-                    imagePullPolicy=os.getenv(
-                        "ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"
-                    ),
-                ),
-                artifact=artifact_id,
-                identity=identity,
-                providers=Providers(
-                    iut=etos.iut_provider,
-                    executionSpace=etos.execution_space_provider,
-                    logArea=etos.log_area_provider,
-                ),
-                suites=TestRunSpec.from_tercc(test_suite, etos.dataset),
+                imagePullPolicy=os.getenv("LOG_LISTENER_IMAGE_PULL_POLICY", "IfNotPresent"),
             ),
-        )
+            environmentProvider=Image(
+                image=os.getenv(
+                    "ENVIRONMENT_PROVIDER_IMAGE",
+                    "registry.nordix.org/eiffel/etos-environment-provider:latest",
+                ),
+                imagePullPolicy=os.getenv(
+                    "ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"
+                ),
+            ),
+            artifact=artifact_id,
+            identity=identity,
+            providers=Providers(
+                iut=etos.iut_provider,
+                executionSpace=etos.execution_space_provider,
+                logArea=etos.log_area_provider,
+            ),
+            suiteSource=etos.test_suite_url,
+            suites=TestRunSpec.from_tercc(test_suite, etos.dataset),
+        ),
+    )
 
-        testrun_client = TestRun(Kubernetes(), strict=True)
-        if not testrun_client.create(testrun_spec):
-            raise HTTPException("Failed to create testrun")
-        await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
-    finally:
-        if not etos_library.debug.disable_sending_events:
-            await sync_to_async(etos_library.publisher.stop)
-            await sync_to_async(etos_library.publisher.wait_close)
+    testrun_client = TestRun(Kubernetes(), strict=True)
+    if not testrun_client.create(testrun_spec):
+        raise HTTPException("Failed to create testrun")
 
     LOGGER.info("ETOS triggered successfully.")
     return {
