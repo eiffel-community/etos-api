@@ -28,6 +28,7 @@ from etos_lib.kubernetes.schemas.testrun import (
     Providers,
     Image,
     Metadata,
+    TestRunner,
 )
 from etos_lib.kubernetes import TestRun, Environment, Kubernetes
 from fastapi import APIRouter, HTTPException
@@ -172,6 +173,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             ),
             artifact=artifact_id,
             identity=identity,
+            testRunner=TestRunner(version="3.5.0"),
             providers=Providers(
                 iut=etos.iut_provider,
                 executionSpace=etos.execution_space_provider,
