@@ -173,7 +173,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             ),
             artifact=artifact_id,
             identity=identity,
-            testRunner=TestRunner(version="3.5.0"),
+            testRunner=TestRunner(version=os.getenv("ETR_VERSION", "Unknown")),
             providers=Providers(
                 iut=etos.iut_provider,
                 executionSpace=etos.execution_space_provider,
