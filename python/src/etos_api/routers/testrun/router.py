@@ -200,11 +200,13 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
 async def _abort(suite_id: str) -> dict:
     """Abort a testrun by deleting the testrun resource."""
     testrun_client = TestRun(Kubernetes())
-    testrun_name = f"testrun-{suite_id}"  # TODO
-    if testrun_client.get(testrun_name):
-        testrun_client.delete(testrun_name)
-    else:
-        raise HTTPException(status_code=404, detail="Suite ID not found.")
+    response = testrun_client.client.delete(
+        type="TestRun",
+        namespace=testrun_client.namespace,
+        label_selector=f"etos.eiffel-community.github.io/id={suite_id}"
+    ) # type:ignore
+    if not response.items:
+         raise HTTPException(status_code=404, detail="Suite ID not found.")
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
