@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException
 from kubernetes import client
 from opentelemetry import trace
 from opentelemetry.trace import Span
+import requests
 
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
@@ -39,6 +40,20 @@ LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
+async def download_suite(test_suite_url: str) -> dict:
+    """Attempt to download suite.
+
+    :param test_suite_url: URL to test suite to download.
+    :return: Downloaded test suite as JSON.
+    """
+    try:
+        suite = requests.get(test_suite_url, timeout=60)
+        suite.raise_for_status()
+    except Exception as exception:  # pylint:disable=broad-except
+        raise AssertionError(f"Unable to download suite from {test_suite_url}") from exception
+    return suite.json()
+
+
 async def validate_suite(test_suite_url: str) -> None:
     """Validate the ETOS test suite through the SuiteValidator.
 
@@ -47,7 +62,8 @@ async def validate_suite(test_suite_url: str) -> None:
     span = trace.get_current_span()
 
     try:
-        await SuiteValidator().validate(test_suite_url)
+        test_suite = await download_suite(test_suite_url)
+        await SuiteValidator().validate(test_suite)
     except AssertionError as exception:
         LOGGER.error("Test suite validation failed!")
         LOGGER.error(exception)

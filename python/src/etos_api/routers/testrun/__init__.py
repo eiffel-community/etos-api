@@ -1,4 +1,4 @@
-# Copyright 2020 Axis Communications AB.
+# Copyright Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -13,13 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""ETOS API routers module."""
-import os
-from kubernetes import config
-from . import etos, testrun, logs, selftest
-
-if os.getenv("RUNNING_TESTS") is None:
-    try:
-        config.load_incluster_config()
-    except config.ConfigException:
-        config.load_config()
+"""ETOS API testrun module."""
+from .router import ROUTER
+from . import schemas
