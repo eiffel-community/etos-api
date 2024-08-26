@@ -28,6 +28,7 @@ from etos_lib.kubernetes.schemas.testrun import (
     Providers,
     Image,
     Metadata,
+    Retention,
     TestRunner,
 )
 from etos_lib.kubernetes import TestRun, Environment, Kubernetes
@@ -138,6 +139,11 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         name = f"testrun-{testrun_id}-"
         LOGGER.error("Could not get name from test suite, defaulting to %s", name)
 
+    retention = Retention(
+        failure=os.getenv("TESTRUN_FAILURE_RETENTION"),
+        success=os.getenv("TESTRUN_SUCCESS_RETENTION"),
+    )
+
     testrun_spec = TestRunSchema(
         metadata=Metadata(
             generateName=name,
@@ -150,6 +156,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         spec=TestRunSpec(
             cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
             id=testrun_id,
+            retention=retention,
             suiteRunner=Image(
                 image=os.getenv(
                     "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
