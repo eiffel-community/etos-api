@@ -31,6 +31,7 @@ type Config interface {
 	LogLevel() string
 	LogFilePath() string
 	Timeout() time.Duration
+	ETOSNamespace() string
 	EventRepositoryHost() string
 	IutWaitTimeoutHard() time.Duration
 	IutWaitTimeoutSoft() time.Duration
@@ -44,6 +45,7 @@ type cfg struct {
 	logLevel            string
 	logFilePath         string
 	timeout             time.Duration
+	etosNamespace       string
 	databaseHost        string
 	databasePort        string
 	eventRepositoryHost string
@@ -108,6 +110,11 @@ func (c *cfg) LogFilePath() string {
 // Timeout returns the request timeout for Provider Service API.
 func (c *cfg) Timeout() time.Duration {
 	return c.timeout
+}
+
+// ETOSNamespace returns the ETOS namespace.
+func (c *cfg) ETOSNamespace() string {
+	return c.etosNamespace
 }
 
 // EventRepositoryHost returns the host to use for event lookups.

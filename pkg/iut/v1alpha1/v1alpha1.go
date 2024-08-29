@@ -26,8 +26,7 @@ import (
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
 	"github.com/eiffel-community/etos-api/internal/iut/contextmanager"
-	"github.com/eiffel-community/etos-api/internal/iut/responses"
-	"github.com/eiffel-community/etos-api/pkg/iut/application"
+	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
@@ -35,15 +34,6 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
 )
-
-var (
-	service_version string
-)
-
-// BASEREGEX for matching /testrun/tercc-id/provider/iuts/reference.
-const BASEREGEX = "/testrun/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/provider/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iuts"
-
-const EtcdTreePathPrefix = "/purl"
 
 type V1Alpha1Application struct {
 	logger   *logrus.Entry
@@ -62,7 +52,20 @@ type V1Alpha1Handler struct {
 }
 
 type Dataset struct {
-	Greed interface{} `json:"greed"`
+}
+
+// RespondWithJSON writes a JSON response with a status code to the HTTP ResponseWriter.
+func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	response, _ := json.Marshal(payload)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, _ = w.Write(response)
+}
+
+// RespondWithError writes a JSON response with an error message and status code to the HTTP ResponseWriter.
+func RespondWithError(w http.ResponseWriter, code int, message string) {
+	RespondWithJSON(w, code, map[string]string{"error": message})
 }
 
 // Close does nothing atm. Present for interface coherence
@@ -92,7 +95,7 @@ func (a V1Alpha1Application) LoadRoutes(router *httprouter.Router) {
 
 // Selftest is a handler to just return 204.
 func (h V1Alpha1Handler) Selftest(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	responses.RespondWithError(w, http.StatusNoContent, "")
+	RespondWithError(w, http.StatusNoContent, "")
 }
 
 type StartRequest struct {
@@ -125,7 +128,7 @@ type StopRequest struct {
 	Id uuid.UUID `json:"id"`
 }
 
-// Start creates a StartResponse with the required number of IUTs (package URLs)
+// Start creates a number of IUTs and stores them in the ETCD database returning a checkout ID.
 func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	checkOutID := uuid.New()
 
@@ -134,13 +137,12 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 
 	var startReq StartRequest
 	if err := json.NewDecoder(r.Body).Decode(&startReq); err != nil {
-		responses.RespondWithError(w, http.StatusBadRequest, err.Error())
+		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	defer r.Body.Close()
 	purl, err := packageurl.FromString(startReq.ArtifactIdentity)
 	if err != nil {
-		responses.RespondWithError(w, http.StatusBadRequest, err.Error())
+		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -150,12 +152,12 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 	iuts, err := json.Marshal(purls)
 	if err != nil {
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	_, err = h.database.Put(r.Context(), fmt.Sprintf("/iut/%s", checkOutID.String()), string(iuts))
 	if err != nil {
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	startResp := StartResponse{Id: checkOutID}
@@ -164,24 +166,23 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	_, _ = w.Write(response)
 }
 
-// Status creates a simple DONE Status response to indicate IUTs have been checked out.
+// Status creates a simple DONE Status response with IUTs.
 func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier := r.Header.Get("X-Etos-Id")
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
-	defer r.Body.Close()
 	id, err := uuid.Parse(r.URL.Query().Get("id"))
 
 	key := fmt.Sprintf("/iut/%s", id)
 	dbResp, err := h.database.Get(r.Context(), key)
 	if err != nil {
 		logger.Errorf("Failed to look up status request id: %s", id)
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if len(dbResp.Kvs) == 0 {
 		err = fmt.Errorf("No key found: %s", key)
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	statusResp := StatusResponse{
@@ -189,12 +190,13 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 		Status: "DONE",
 	}
 	if err = json.Unmarshal(dbResp.Kvs[0].Value, &statusResp.Iuts); err != nil {
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	response, err := json.Marshal(statusResp)
 	if err != nil {
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -207,17 +209,16 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
 	var stopReq StopRequest
-	defer r.Body.Close()
 
 	if err := json.NewDecoder(r.Body).Decode(&stopReq); err != nil {
 		logger.Errorf("Bad delete request: %s", err.Error())
-		responses.RespondWithError(w, http.StatusBadRequest, err.Error())
+		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	_, err := h.database.Delete(r.Context(), fmt.Sprintf("/iut/%s", stopReq.Id))
 	if err != nil {
 		logger.Errorf("Etcd delete failed: %s", err.Error())
-		responses.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -251,7 +252,7 @@ func (h V1Alpha1Handler) panicRecovery(
 					r.Context(),
 				).Errorf("recovering from err %+v\n %s", err, buf)
 				identifier := ps.ByName("identifier")
-				responses.RespondWithError(
+				RespondWithError(
 					w,
 					http.StatusInternalServerError,
 					fmt.Sprintf("unknown error: contact server admin with id '%s'", identifier),

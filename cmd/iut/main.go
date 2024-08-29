@@ -26,9 +26,9 @@ import (
 
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
 	"github.com/eiffel-community/etos-api/internal/iut/contextmanager"
-	server "github.com/eiffel-community/etos-api/internal/iut/server"
 	"github.com/eiffel-community/etos-api/internal/logging"
-	"github.com/eiffel-community/etos-api/pkg/iut/application"
+	server "github.com/eiffel-community/etos-api/internal/server"
+	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/iut/v1alpha1"
 	"github.com/sirupsen/logrus"
 	"github.com/snowzach/rotatefilehook"
@@ -81,7 +81,7 @@ func main() {
 	defer v1alpha1App.Close()
 	router := application.New(v1alpha1App)
 
-	srv := server.NewWebserver(cfg, log, router)
+	srv := server.NewWebService(cfg, log, router)
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
