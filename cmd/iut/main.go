@@ -56,9 +56,9 @@ func main() {
 	}
 	log := logger.WithFields(logrus.Fields{
 		"hostname":    hostname,
-		"application": "Dummy IUT Provider Service",
+		"application": "ETOS IUT Provider Service Mini",
 		"version":     vcsRevision(),
-		"name":        "Dummy IUT Provider",
+		"name":        "ETOS IUT Provider Mini",
 		"user_log":    false,
 	})
 
@@ -90,14 +90,13 @@ func main() {
 	<-done
 	log.Info("SIGTERM received")
 
-	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout())
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	v1alpha1App.Close()
 
 	if err := srv.Close(ctx); err != nil {
 		log.Errorf("Webserver shutdown failed: %+v", err)
 	}
-	log.Info("Wait for checkout, deploy, status and checkin jobs to complete")
 }
 
 // fileLogging adds a hook into a slice of hooks, if the filepath configuration is set

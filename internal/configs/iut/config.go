@@ -19,9 +19,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Config interface for retrieving configuration options.
@@ -30,58 +27,31 @@ type Config interface {
 	ServicePort() string
 	LogLevel() string
 	LogFilePath() string
-	Timeout() time.Duration
 	ETOSNamespace() string
-	EventRepositoryHost() string
-	IutWaitTimeoutHard() time.Duration
-	IutWaitTimeoutSoft() time.Duration
 	DatabaseURI() string
 }
 
 // cfg implements the Config interface.
 type cfg struct {
-	serviceHost         string
-	servicePort         string
-	logLevel            string
-	logFilePath         string
-	timeout             time.Duration
-	etosNamespace       string
-	databaseHost        string
-	databasePort        string
-	eventRepositoryHost string
-	iutWaitTimeoutHard  time.Duration
-	iutWaitTimeoutSoft  time.Duration
+	serviceHost   string
+	servicePort   string
+	logLevel      string
+	logFilePath   string
+	etosNamespace string
+	databaseHost  string
+	databasePort  string
 }
 
 // Get creates a config interface based on input parameters or environment variables.
 func Get() Config {
 	var conf cfg
 
-	defaultTimeout, err := time.ParseDuration(EnvOrDefault("REQUEST_TIMEOUT", "1m"))
-	if err != nil {
-		logrus.Panic(err)
-	}
-
-	iutWaitTimeoutHard, err := time.ParseDuration(EnvOrDefault("IUT_WAIT_TIMEOUT", "1h"))
-	if err != nil {
-		logrus.Panic(err)
-	}
-
-	iutWaitTimeoutSoft, err := time.ParseDuration(EnvOrDefault("IUT_WAIT_TIMEOUT_SOFT", "30m"))
-	if err != nil {
-		logrus.Panic(err)
-	}
-
 	flag.StringVar(&conf.serviceHost, "address", EnvOrDefault("SERVICE_HOST", "127.0.0.1"), "Address to serve API on")
 	flag.StringVar(&conf.servicePort, "port", EnvOrDefault("SERVICE_PORT", "8080"), "Port to serve API on")
 	flag.StringVar(&conf.logLevel, "loglevel", EnvOrDefault("LOGLEVEL", "INFO"), "Log level (TRACE, DEBUG, INFO, WARNING, ERROR, FATAL, PANIC).")
 	flag.StringVar(&conf.logFilePath, "logfilepath", os.Getenv("LOG_FILE_PATH"), "Path, including filename, for the log files to create.")
-	flag.DurationVar(&conf.timeout, "timeout", defaultTimeout, "Maximum timeout for requests to Provider Service.")
 	flag.StringVar(&conf.databaseHost, "database_host", EnvOrDefault("ETOS_ETCD_HOST", "etcd-client"), "Host to ETOS database")
 	flag.StringVar(&conf.databasePort, "database_port", EnvOrDefault("ETOS_ETCD_PORT", "2379"), "Port to ETOS database")
-	flag.StringVar(&conf.eventRepositoryHost, "eventrepository_url", os.Getenv("ETOS_GRAPHQL_SERVER"), "URL to the GraphQL server to use for event lookup.")
-	flag.DurationVar(&conf.iutWaitTimeoutHard, "hard iut wait timeout", iutWaitTimeoutHard, "Hard wait timeout for IUT checkout")
-	flag.DurationVar(&conf.iutWaitTimeoutSoft, "soft iut wait timeout", iutWaitTimeoutSoft, "Soft wait timeout for IUT checkout")
 	flag.Parse()
 
 	return &conf
@@ -107,29 +77,9 @@ func (c *cfg) LogFilePath() string {
 	return c.logFilePath
 }
 
-// Timeout returns the request timeout for Provider Service API.
-func (c *cfg) Timeout() time.Duration {
-	return c.timeout
-}
-
 // ETOSNamespace returns the ETOS namespace.
 func (c *cfg) ETOSNamespace() string {
 	return c.etosNamespace
-}
-
-// EventRepositoryHost returns the host to use for event lookups.
-func (c *cfg) EventRepositoryHost() string {
-	return c.eventRepositoryHost
-}
-
-// IutWaitTimeoutHard returns the hard timeout for IUT checkout
-func (c *cfg) IutWaitTimeoutHard() time.Duration {
-	return c.iutWaitTimeoutHard
-}
-
-// IutWaitTimeoutSoft returns the soft timeout for IUT checkout
-func (c *cfg) IutWaitTimeoutSoft() time.Duration {
-	return c.iutWaitTimeoutSoft
 }
 
 // DatabaseURI returns the URI to the ETOS database.

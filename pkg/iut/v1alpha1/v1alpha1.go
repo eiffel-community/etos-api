@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
+	"time"
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
@@ -225,7 +226,7 @@ func (h V1Alpha1Handler) timeoutHandler(
 	fn func(http.ResponseWriter, *http.Request, httprouter.Params),
 ) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		ctx, cancel := context.WithTimeout(r.Context(), h.cfg.Timeout())
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		newRequest := r.WithContext(ctx)
 		fn(w, newRequest, ps)

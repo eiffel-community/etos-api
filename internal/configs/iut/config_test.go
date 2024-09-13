@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -30,7 +29,6 @@ func TestGet(t *testing.T) {
 	serverHost := "127.0.0.1"
 	logLevel := "DEBUG"
 	logFilePath := "path/to/a/file"
-	timeoutStr := "1m"
 	databaseHost := "etcd"
 	databasePort := "12345"
 
@@ -38,11 +36,8 @@ func TestGet(t *testing.T) {
 	os.Setenv("SERVICE_PORT", port)
 	os.Setenv("LOGLEVEL", logLevel)
 	os.Setenv("LOG_FILE_PATH", logFilePath)
-	os.Setenv("REQUEST_TIMEOUT", timeoutStr)
 	os.Setenv("ETOS_ETCD_HOST", databaseHost)
 	os.Setenv("ETOS_ETCD_PORT", databasePort)
-
-	timeout, _ := time.ParseDuration(timeoutStr)
 
 	conf, ok := Get().(*cfg)
 	assert.Truef(t, ok, "cfg returned from get is not a config interface")
@@ -52,8 +47,6 @@ func TestGet(t *testing.T) {
 	assert.Equal(t, logFilePath, conf.logFilePath)
 	assert.Equal(t, databaseHost, conf.databaseHost)
 	assert.Equal(t, databasePort, conf.databasePort)
-	assert.Equal(t, timeout, conf.timeout)
-	assert.Equal(t, timeout, conf.timeout)
 }
 
 type getter func() string
@@ -85,14 +78,4 @@ func TestGetters(t *testing.T) {
 			assert.Equal(t, testCase.value, testCase.function())
 		})
 	}
-}
-
-// TestTimeoutGetter tests the getter for Timeout. Similar to TestGetters, but since
-// Timeout is not a "func() string" we separate its test.
-func TestTimeoutGetter(t *testing.T) {
-	timeout, _ := time.ParseDuration("1m")
-	conf := &cfg{
-		timeout: timeout,
-	}
-	assert.Equal(t, conf.timeout, conf.Timeout())
 }
