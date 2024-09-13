@@ -12,5 +12,5 @@ services:
     ports:
       - 8080:8080
     env_file:
-      - ../../configs/development.env
+      - ./configs/development.env
     entrypoint: ["/app/bin/iut"]

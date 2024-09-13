@@ -87,6 +87,10 @@ tidy:
 check-dirty:
 	$(GIT) diff --exit-code HEAD
 
+.PHONY: gen
+gen:
+	go generate ./...
+
 
 # Setup the dynamic commands
 #

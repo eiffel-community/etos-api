@@ -20,6 +20,14 @@ Installation
    pip install .
 
 
+Running dockers in development mode
+===================================
+
+   make DEPLOY=etos-iut start
+   make DEPLOY=etos-logarea start
+   make DEPLOY=etos-sse start
+
+
 Contribute
 ==========
 
