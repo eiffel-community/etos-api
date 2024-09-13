@@ -25,7 +25,6 @@ import (
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
-	"github.com/eiffel-community/etos-api/internal/iut/contextmanager"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -39,7 +38,6 @@ type V1Alpha1Application struct {
 	logger   *logrus.Entry
 	cfg      config.Config
 	database *clientv3.Client
-	cm       *contextmanager.ContextManager
 	wg       *sync.WaitGroup
 }
 
@@ -47,7 +45,6 @@ type V1Alpha1Handler struct {
 	logger   *logrus.Entry
 	cfg      config.Config
 	database *clientv3.Client
-	cm       *contextmanager.ContextManager
 	wg       *sync.WaitGroup
 }
 
@@ -74,19 +71,18 @@ func (a *V1Alpha1Application) Close() {
 }
 
 // New returns a new V1Alpha1Application object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cm *contextmanager.ContextManager, cli *clientv3.Client) application.Application {
+func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cli *clientv3.Client) application.Application {
 	return &V1Alpha1Application{
 		logger:   log,
 		cfg:      cfg,
 		database: cli,
-		cm:       cm,
 		wg:       &sync.WaitGroup{},
 	}
 }
 
 // LoadRoutes loads all the v1alpha1 routes.
 func (a V1Alpha1Application) LoadRoutes(router *httprouter.Router) {
-	handler := &V1Alpha1Handler{a.logger, a.cfg, a.database, a.cm, a.wg}
+	handler := &V1Alpha1Handler{a.logger, a.cfg, a.database, a.wg}
 	router.GET("/v1alpha1/selftest/ping", handler.Selftest)
 	router.POST("/start", handler.panicRecovery(handler.timeoutHandler(handler.Start)))
 	router.GET("/status", handler.panicRecovery(handler.timeoutHandler(handler.Status)))
@@ -140,6 +136,7 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer r.Body.Close()
 	purl, err := packageurl.FromString(startReq.ArtifactIdentity)
 	if err != nil {
 		RespondWithError(w, http.StatusBadRequest, err.Error())
@@ -191,7 +188,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 	}
 	if err = json.Unmarshal(dbResp.Kvs[0].Value, &statusResp.Iuts); err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
-		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	response, err := json.Marshal(statusResp)
@@ -209,7 +205,7 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
 	var stopReq StopRequest
-
+	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&stopReq); err != nil {
 		logger.Errorf("Bad delete request: %s", err.Error())
 		RespondWithError(w, http.StatusBadRequest, err.Error())

@@ -25,7 +25,6 @@ import (
 	"time"
 
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
-	"github.com/eiffel-community/etos-api/internal/iut/contextmanager"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	server "github.com/eiffel-community/etos-api/internal/server"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -72,12 +71,8 @@ func main() {
 		log.WithError(err).Fatal("failed to create etcd connection")
 	}
 
-	cm := contextmanager.New(cli)
-	go cm.Start(ctx)
-	defer cm.CancelAll()
-
 	log.Info("Loading v1alpha1 routes")
-	v1alpha1App := v1alpha1.New(cfg, log, ctx, cm, cli)
+	v1alpha1App := v1alpha1.New(cfg, log, ctx, cli)
 	defer v1alpha1App.Close()
 	router := application.New(v1alpha1App)
 
