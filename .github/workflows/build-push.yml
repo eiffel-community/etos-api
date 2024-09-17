@@ -95,6 +95,36 @@ jobs:
         echo "::set-output name=version::$VERSION"
     outputs:
       logAreaVersion: ${{ steps.image.outputs.version }}
+  build_iut:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build app image
+      run: docker build . -f deploy/etos-iut/Dockerfile --tag image
+
+    - name: Log into registry
+      run: echo "${{ secrets.REGISTRYPASSWORD }}" | docker login registry.nordix.org -u ${{ secrets.REGISTRYUSERNAME }} --password-stdin
+
+    - name: Push app image
+      id: image
+      run: |
+        IMAGE_ID=registry.nordix.org/eiffel/etos-iut
+        # Strip git ref prefix from version
+        VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+        # Strip "v" prefix from tag name
+        [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+        # Use Docker `latest` tag convention
+        [ "$VERSION" == "main" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
+        echo IMAGE_ID=$IMAGE_ID
+        echo VERSION=$VERSION
+        docker tag image $IMAGE_ID:$VERSION
+        docker push $IMAGE_ID:$VERSION
+        echo $IMAGE_ID:$VERSION
+        echo "::set-output name=version::$VERSION"
+    outputs:
+      logAreaVersion: ${{ steps.image.outputs.version }}
+
   update_manifests:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
