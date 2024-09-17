@@ -8,7 +8,7 @@ export DOCKER_REGISTRY ?= registry.nordix.org
 export DOCKER_NAMESPACE ?= eiffel
 export DEPLOY ?= etos-sse
 
-PROGRAMS = sse logarea iut
+PROGRAMS = sse logarea iut executionspace
 COMPILEDAEMON = $(GOBIN)/CompileDaemon
 GIT = git
 GOLANGCI_LINT = $(GOBIN)/golangci-lint
