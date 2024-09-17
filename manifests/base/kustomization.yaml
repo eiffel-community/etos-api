@@ -10,6 +10,7 @@ resources:
   - ./sse
   - ./logarea
   - ./iut
+  - ./executionspace
 
 
 # By generating the configmap it will get a unique name on each apply
