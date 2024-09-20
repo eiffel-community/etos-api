@@ -123,8 +123,7 @@ jobs:
         echo $IMAGE_ID:$VERSION
         echo "::set-output name=version::$VERSION"
     outputs:
-      logAreaVersion: ${{ steps.image.outputs.version }}
-
+      IutVersion: ${{ steps.image.outputs.version }}
   update_manifests:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
@@ -144,8 +143,11 @@ jobs:
             },
             "manifests/base/logarea/deployment.yaml": {
               "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-logarea:${{ needs.build_logarea.outputs.logAreaVersion }}"
+            },
+            "manifests/base/iut/deployment.yaml": {
+              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-iut:${{ needs.build_iut.outputs.IutVersion }}"
             }
           }
         branch: main
         commitChange: true
-        message: Updating SSE image to ${{ needs.build_sse.outputs.sseVersion }}, LogArea image to ${{ needs.build_logarea.outputs.logAreaVersion }} and API image to ${{ needs.build_api.outputs.apiVersion }}
+        message: Updating SSE image to ${{ needs.build_sse.outputs.sseVersion }}, LogArea image to ${{ needs.build_logarea.outputs.logAreaVersion }}, IUT image to ${{ needs.build_iut.outputs.IutVersion }}  API image to ${{ needs.build_api.outputs.apiVersion }}
