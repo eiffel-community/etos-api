@@ -127,7 +127,7 @@ jobs:
   update_manifests:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
-    needs: [build_api, build_sse, build_logarea]
+    needs: [build_api, build_sse, build_logarea, build_iut]
     steps:
     - uses: actions/checkout@v3
     - name: Update manifests
