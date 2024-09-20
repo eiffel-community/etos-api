@@ -150,4 +150,4 @@ jobs:
           }
         branch: main
         commitChange: true
-        message: Updating SSE image to ${{ needs.build_sse.outputs.sseVersion }}, LogArea image to ${{ needs.build_logarea.outputs.logAreaVersion }}, IUT image to ${{ needs.build_iut.outputs.iutVersion }}  API image to ${{ needs.build_api.outputs.apiVersion }}
+        message: Updating SSE image to ${{ needs.build_sse.outputs.sseVersion }}, LogArea image to ${{ needs.build_logarea.outputs.logAreaVersion }}, IUT image to ${{ needs.build_iut.outputs.iutVersion }} and API image to ${{ needs.build_api.outputs.apiVersion }}
