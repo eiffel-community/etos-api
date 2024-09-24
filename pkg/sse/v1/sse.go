@@ -138,10 +138,10 @@ func GetFrom(ctx context.Context, url string, id string) ([]events.Event, error)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 
 	etosEvents := []events.Event{}
 	scanner := bufio.NewScanner(response.Body)
-	defer response.Body.Close()
 	for scanner.Scan() {
 		event, err := events.New(scanner.Bytes())
 		if err != nil {
@@ -169,12 +169,12 @@ func GetOne(ctx context.Context, url string, id string) (events.Event, error) {
 	if err != nil {
 		return event, err
 	}
+	defer response.Body.Close() // make sure the body is closed if io.ReadAll returns error
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return event, err
 	}
-	defer response.Body.Close()
 	return events.New(body)
 }
 
