@@ -154,7 +154,7 @@ func GetFrom(ctx context.Context, url string, id string) ([]events.Event, error)
 }
 
 // GetOne gets a single event from an ESR instance.
-func GetOne(ctx context.Context, url string, id string) (events.Event, error) {
+func GetOne(ctx context.Context, logger *logrus.Entry, url string, id string) (events.Event, error) {
 	event := events.Event{}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -169,10 +169,11 @@ func GetOne(ctx context.Context, url string, id string) (events.Event, error) {
 	if err != nil {
 		return event, err
 	}
-	defer response.Body.Close() // make sure the body is closed if io.ReadAll returns error
+	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
+		logger.Errorf("Request failed (could not read response body): %+v", request)
 		return event, err
 	}
 	return events.New(body)
@@ -208,7 +209,7 @@ func (h SSEHandler) GetEvent(w http.ResponseWriter, r *http.Request, ps httprout
 		return
 	}
 
-	event, err := GetOne(r.Context(), url, counter)
+	event, err := GetOne(r.Context(), logger, url, counter)
 	if err != nil {
 		logger.Error(err)
 		// TODO: Message client
