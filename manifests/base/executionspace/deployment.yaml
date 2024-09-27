@@ -3,7 +3,6 @@ kind: ConfigMap
 metadata:
   name: etos-executionspace
 data:
-  TZ: "Europe/Stockholm"
   PROVIDER_HOSTNAME: http://etos-executionspace
 ---
 apiVersion: apps/v1

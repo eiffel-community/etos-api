@@ -23,7 +23,7 @@ import (
 	"time"
 
 	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
-	"github.com/eiffel-community/etos-api/internal/executionspace/database"
+	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	clientv3 "go.etcd.io/etcd/client/v3"

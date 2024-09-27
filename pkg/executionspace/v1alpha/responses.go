@@ -13,26 +13,24 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package logging
+
+package providerservice
 
 import (
-	"github.com/sirupsen/logrus"
+	"encoding/json"
+	"net/http"
 )
 
-// Setup sets up logging to file with a JSON format and to stdout in text format.
-func Setup(loglevel string, hooks []logrus.Hook) (*logrus.Logger, error) {
-	log := logrus.New()
+// RespondWithJSON writes a JSON response with a status code to the HTTP ResponseWriter.
+func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	response, _ := json.Marshal(payload)
 
-	logLevel, err := logrus.ParseLevel(loglevel)
-	if err != nil {
-		return log, err
-	}
-	for _, hook := range hooks {
-		log.AddHook(hook)
-	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, _ = w.Write(response)
+}
 
-	log.SetLevel(logLevel)
-	log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
-	log.SetReportCaller(true)
-	return log, nil
+// RespondWithError writes a JSON response with an error message and status code to the HTTP ResponseWriter.
+func RespondWithError(w http.ResponseWriter, code int, message string) {
+	RespondWithJSON(w, code, map[string]string{"error": message})
 }

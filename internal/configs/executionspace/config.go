@@ -35,10 +35,11 @@ type Config interface {
 	Timeout() time.Duration
 	KubernetesNamespace() string
 	ExecutionSpaceWaitTimeout() time.Duration
-	RabbitMQHookUrl() string
+	RabbitMQHookURL() string
 	RabbitMQHookExchangeName() string
 	DatabaseURI() string
 	ETOSNamespace() string
+	EiffelGoerURL() string
 }
 
 // cfg implements the Config interface.
@@ -56,6 +57,7 @@ type cfg struct {
 	executionSpaceWaitTimeout time.Duration
 	rabbitmqHookURL           string
 	rabbitmqHookExchange      string
+	eiffelGoerURL             string
 	etosNamespace             string
 }
 
@@ -86,6 +88,7 @@ func Get() Config {
 	flag.DurationVar(&conf.executionSpaceWaitTimeout, "execution space wait timeout", executionSpaceWaitTimeout, "Timeout duration to wait when trying to checkout execution space(s)")
 	flag.StringVar(&conf.rabbitmqHookURL, "rabbitmq_hook_url", os.Getenv("ETOS_RABBITMQ_URL"), "URL to the ETOS rabbitmq for logs")
 	flag.StringVar(&conf.rabbitmqHookExchange, "rabbitmq_hook_exchange", os.Getenv("ETOS_RABBITMQ_EXCHANGE"), "Exchange to use for the ETOS rabbitmq for logs")
+	flag.StringVar(&conf.eiffelGoerURL, "event_repository_host", os.Getenv("EIFFEL_GOER_URL"), "Event repository URL used for Eiffel event lookup")
 	flag.Parse()
 	return &conf
 }
@@ -136,8 +139,13 @@ func (c *cfg) ExecutionSpaceWaitTimeout() time.Duration {
 }
 
 // RabbitMQHookURL returns the rabbitmq url for ETOS logs
-func (c *cfg) RabbitMQHookUrl() string {
+func (c *cfg) RabbitMQHookURL() string {
 	return c.rabbitmqHookURL
+}
+
+// EventRepositoryURL returns the Eiffel event repository used for event lookups
+func (c *cfg) EiffelGoerURL() string {
+	return c.eiffelGoerURL
 }
 
 // RabbitMQHookExchangeName returns the rabbitmq exchange name used for ETOS logs

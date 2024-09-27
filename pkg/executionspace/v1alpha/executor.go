@@ -24,9 +24,9 @@ import (
 	"time"
 
 	"github.com/eiffel-community/eiffelevents-sdk-go"
-	"github.com/eiffel-community/etos-api/internal/executionspace/eventrepository"
+	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
+	"github.com/eiffel-community/etos-api/internal/eventrepository"
 	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
-	"github.com/eiffel-community/etos-api/internal/executionspace/responses"
 	"github.com/eiffel-community/etos-api/pkg/executionspace/executionspace"
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -61,7 +61,7 @@ func (h ProviderServiceHandler) ExecutorStart(w http.ResponseWriter, r *http.Req
 		msg := fmt.Errorf("There was an error when preparing the %s execution space", executorName)
 		logger.WithField("user_log", true).Error(msg)
 		h.recordOtelException(span, msg)
-		responses.RespondWithError(w, http.StatusBadRequest, "could not read ID from post body")
+		RespondWithError(w, http.StatusBadRequest, "could not read ID from post body")
 		return
 	}
 
@@ -71,10 +71,10 @@ func (h ProviderServiceHandler) ExecutorStart(w http.ResponseWriter, r *http.Req
 		if ctx.Err() != nil {
 			logger.WithField("user_log", true).Error(msg)
 			h.recordOtelException(span, msg)
-			responses.RespondWithError(w, http.StatusRequestTimeout, msg.Error())
+			RespondWithError(w, http.StatusRequestTimeout, msg.Error())
 			return
 		}
-		responses.RespondWithError(w, http.StatusBadRequest, msg.Error())
+		RespondWithError(w, http.StatusBadRequest, msg.Error())
 		logger.WithField("user_log", true).Error(msg)
 		return
 	}
@@ -85,13 +85,13 @@ func (h ProviderServiceHandler) ExecutorStart(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		if ctx.Err() != nil {
 			msg := fmt.Errorf("Timed out when trying to start the test execution job")
-			responses.RespondWithError(w, http.StatusRequestTimeout, msg.Error())
+			RespondWithError(w, http.StatusRequestTimeout, msg.Error())
 			logger.WithField("user_log", true).Error(msg)
 			h.recordOtelException(span, msg)
 			return
 		}
 		msg := fmt.Errorf("Error trying to start the test execution job: %s", err.Error())
-		responses.RespondWithError(w, http.StatusInternalServerError, msg.Error())
+		RespondWithError(w, http.StatusInternalServerError, msg.Error())
 		logger.WithField("user_log", true).Error(msg)
 		h.recordOtelException(span, msg)
 		return
@@ -106,13 +106,13 @@ func (h ProviderServiceHandler) ExecutorStart(w http.ResponseWriter, r *http.Req
 		}
 		if ctx.Err() != nil {
 			msg := fmt.Errorf("Timed out when waiting for the test execution job to start - Error: %s", err.Error())
-			responses.RespondWithError(w, http.StatusRequestTimeout, msg.Error())
+			RespondWithError(w, http.StatusRequestTimeout, msg.Error())
 			logger.WithField("user_log", true).Error(msg)
 			h.recordOtelException(span, msg)
 			return
 		}
 		msg := fmt.Errorf("Error when waiting for the test execution job to start - Error: %s", err.Error())
-		responses.RespondWithError(w, http.StatusInternalServerError, msg.Error())
+		RespondWithError(w, http.StatusInternalServerError, msg.Error())
 		logger.WithField("user_log", true).Error(msg)
 		h.recordOtelException(span, msg)
 		return
@@ -128,33 +128,33 @@ func (h ProviderServiceHandler) ExecutorStart(w http.ResponseWriter, r *http.Req
 		}
 		if ctx.Err() != nil {
 			msg := fmt.Errorf("Timed out when saving the test execution configuration")
-			responses.RespondWithError(w, http.StatusRequestTimeout, msg.Error())
+			RespondWithError(w, http.StatusRequestTimeout, msg.Error())
 			logger.WithField("user_log", true).Error(msg)
 			h.recordOtelException(span, msg)
 			return
 		}
 		msg := fmt.Errorf("Error when saving the test execution configuration")
-		responses.RespondWithError(w, http.StatusInternalServerError, msg.Error())
+		RespondWithError(w, http.StatusInternalServerError, msg.Error())
 		logger.WithField("user_log", true).Error(msg)
 		h.recordOtelException(span, msg)
 		return
 	}
 
 	subSuiteState := state{ExecutorSpec: executor}
-	if err = subSuiteState.waitStart(ctx, logger, h.provider.Executor()); err != nil {
+	if err = subSuiteState.waitStart(ctx, h.cfg, logger, h.provider.Executor()); err != nil {
 		if cancelErr := h.provider.Executor().Stop(context.Background(), logger, buildID); cancelErr != nil {
 			msg := fmt.Errorf("cancel failed: %s", cancelErr.Error())
 			logger.Error(msg)
 		}
 		if ctx.Err() != nil {
 			msg := fmt.Errorf("Timed out when waiting for the test execution job to initialize - Error: %s", err.Error())
-			responses.RespondWithError(w, http.StatusRequestTimeout, msg.Error())
+			RespondWithError(w, http.StatusRequestTimeout, msg.Error())
 			logger.WithField("user_log", true).Error(msg)
 			h.recordOtelException(span, msg)
 			return
 		}
 		msg := fmt.Errorf("Error when waiting for the test execution job to initialize - Error: %s", err.Error())
-		responses.RespondWithError(w, http.StatusBadRequest, msg.Error())
+		RespondWithError(w, http.StatusBadRequest, msg.Error())
 		logger.WithField("user_log", true).Error(msg)
 		h.recordOtelException(span, msg)
 		return
@@ -165,7 +165,8 @@ func (h ProviderServiceHandler) ExecutorStart(w http.ResponseWriter, r *http.Req
 	if buildURL != "" {
 		logger.WithField("user_log", true).Info("Executor build URL: ", buildURL)
 	}
-	responses.RespondWithError(w, http.StatusNoContent, "")
+	w.WriteHeader(http.StatusNoContent)
+	_, _ = w.Write([]byte(""))
 }
 
 type state struct {
@@ -175,23 +176,23 @@ type state struct {
 }
 
 // getSubSuite gets a sub suite from event repository
-func (s *state) getSubSuite(logger *logrus.Entry, ctx context.Context) (*eiffelevents.TestSuiteStartedV3, error) {
+func (s *state) getSubSuite(ctx context.Context, cfg config.Config) (*eiffelevents.TestSuiteStartedV3, error) {
 	if s.environment == nil {
-		event, err := eventrepository.EnvironmentDefined(ctx, s.ExecutorSpec.Instructions.Environment["ENVIRONMENT_ID"])
+		event, err := eventrepository.EnvironmentDefined(ctx, cfg.EiffelGoerURL(), s.ExecutorSpec.Instructions.Environment["ENVIRONMENT_ID"])
 		if err != nil {
 			return nil, err
 		}
 		s.environment = event
 	}
 	if s.environment != nil && s.mainSuite == nil {
-		event, err := eventrepository.MainSuiteStarted(ctx, s.environment.Links.FindFirst("CONTEXT"))
+		event, err := eventrepository.MainSuiteStarted(ctx, cfg.EiffelGoerURL(), s.environment.Links.FindFirst("CONTEXT"))
 		if err != nil {
 			return nil, err
 		}
 		s.mainSuite = event
 	}
 	if s.mainSuite != nil && s.environment != nil {
-		event, err := eventrepository.TestSuiteStarted(ctx, s.mainSuite.Meta.ID, s.environment.Data.Name)
+		event, err := eventrepository.TestSuiteStarted(ctx, cfg.EiffelGoerURL(), s.mainSuite.Meta.ID, s.environment.Data.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -201,10 +202,10 @@ func (s *state) getSubSuite(logger *logrus.Entry, ctx context.Context) (*eiffele
 }
 
 // waitStart waits for a job to start completely
-func (s *state) waitStart(ctx context.Context, logger *logrus.Entry, executor executor.Executor) error {
+func (s *state) waitStart(ctx context.Context, cfg config.Config, logger *logrus.Entry, executor executor.Executor) error {
 	var event *eiffelevents.TestSuiteStartedV3
 	var err error
-	if err = retry.Fibonacci(ctx, 5*time.Second, func(ctx context.Context) error {
+	if err = retry.Constant(ctx, 5*time.Second, func(ctx context.Context) error {
 		alive, err := executor.Alive(ctx, logger, s.ExecutorSpec.BuildID)
 		if err != nil {
 			logger.Errorf("Retrying - %s", err.Error())
@@ -214,13 +215,11 @@ func (s *state) waitStart(ctx context.Context, logger *logrus.Entry, executor ex
 		if !alive {
 			return errors.New("test runner did not start properly")
 		}
-		if event == nil {
-			event, err = s.getSubSuite(logger, ctx)
-			if err != nil {
-				logger.Errorf("Retrying - %s", err.Error())
-				// TODO: Verify that this is always retryable
-				return retry.RetryableError(err)
-			}
+		event, err = s.getSubSuite(ctx, cfg)
+		if err != nil {
+			logger.Errorf("Retrying - %s", err.Error())
+			// TODO: Verify that this is always retryable
+			return retry.RetryableError(err)
 		}
 		if event == nil {
 			return retry.RetryableError(errors.New("not yet started"))

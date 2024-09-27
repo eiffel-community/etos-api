@@ -30,7 +30,6 @@ import (
 	"github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
 	"github.com/eiffel-community/etos-api/internal/executionspace/provider"
-	"github.com/eiffel-community/etos-api/internal/executionspace/responses"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	httperrors "github.com/eiffel-community/etos-api/pkg/executionspace/errors"
 	"github.com/eiffel-community/etos-api/pkg/executionspace/executionspace"
@@ -190,7 +189,7 @@ func (h ProviderServiceHandler) recordOtelException(span trace.Span, err error) 
 
 // Selftest is a handler to just return 204.
 func (h ProviderServiceHandler) Selftest(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	responses.RespondWithError(w, http.StatusNoContent, "")
+	RespondWithError(w, http.StatusNoContent, "")
 }
 
 // Start handles the start request and checks out execution spaces
@@ -204,7 +203,7 @@ func (h ProviderServiceHandler) Start(w http.ResponseWriter, r *http.Request, ps
 	_, span := h.getOtelTracer().Start(ctx, "start", trace.WithSpanKind(trace.SpanKindServer))
 	defer span.End()
 
-	startReq, err := h.verifyStartInput(logger, r)
+	startReq, err := h.verifyStartInput(r)
 	if err != nil {
 		msg := fmt.Errorf("start input could not be verified: %s", err.Error())
 		logger.Error(msg)
@@ -234,7 +233,7 @@ func (h ProviderServiceHandler) Start(w http.ResponseWriter, r *http.Request, ps
 	span.SetAttributes(attribute.String("etos.execution_space_provider.checkout.environment", fmt.Sprintf("%v", startReq.Environment)))
 	span.SetAttributes(attribute.String("etos.execution_space_provider.checkout.id", checkoutId.String()))
 
-	responses.RespondWithJSON(w, http.StatusOK, StartResponse{ID: checkoutId})
+	RespondWithJSON(w, http.StatusOK, StartResponse{ID: checkoutId})
 }
 
 // Status handles the status request, gets and returns the execution space checkout status
@@ -259,7 +258,7 @@ func (h ProviderServiceHandler) Status(w http.ResponseWriter, r *http.Request, p
 		msg := fmt.Errorf("Failed to retrieve execution space status (id=%s) - Reason: %s", id, err.Error())
 		logger.Error(msg.Error())
 		h.recordOtelException(span, msg)
-		responses.RespondWithJSON(w, http.StatusInternalServerError, executionSpace)
+		RespondWithJSON(w, http.StatusInternalServerError, executionSpace)
 		return
 	}
 
@@ -268,7 +267,7 @@ func (h ProviderServiceHandler) Status(w http.ResponseWriter, r *http.Request, p
 			attribute.String("etos.execution_space_provider.status.executorspec", fmt.Sprintf("%v", executorSpec)),
 		)
 	}
-	responses.RespondWithJSON(w, http.StatusOK, executionSpace)
+	RespondWithJSON(w, http.StatusOK, executionSpace)
 }
 
 // Stop handles the stop request, stops the execution space executors and checks in all the provided execution spaces
@@ -293,14 +292,15 @@ func (h ProviderServiceHandler) Stop(w http.ResponseWriter, r *http.Request, ps 
 	defer r.Body.Close()
 
 	err = nil
+
 	for _, executorSpec := range executors {
-		id, stopErr := h.provider.Job(r.Context(), executorSpec.ID)
-		if stopErr != nil {
-			if errors.Is(stopErr, io.EOF) {
+		id, jobInitErr := h.provider.Job(r.Context(), executorSpec.ID)
+		if jobInitErr != nil {
+			if errors.Is(jobInitErr, io.EOF) {
 				// Already been checked in
 				continue
 			}
-			err = errors.Join(err, stopErr)
+			err = errors.Join(err, jobInitErr)
 			continue
 		}
 		// If the executorSpec does not exist in the database, we should not
@@ -308,13 +308,11 @@ func (h ProviderServiceHandler) Stop(w http.ResponseWriter, r *http.Request, ps 
 		if id == "" {
 			continue
 		}
-		if stopErr := h.provider.Executor().Stop(r.Context(), logger, id); stopErr != nil {
-			err = errors.Join(err, stopErr)
-		}
 		success := true
-		if stopErr != nil {
+		if stopErr := h.provider.Executor().Stop(r.Context(), logger, id); stopErr != nil {
 			success = false
-			msg := fmt.Errorf("Failed to stop executor %v - Reason: %s", id, stopErr.Error())
+			err = errors.Join(err, stopErr)
+			msg := fmt.Errorf("Failed to stop executor %v - Reason: %s", id, err.Error())
 			logger.Error(msg)
 			h.recordOtelException(span, msg)
 		}
@@ -324,7 +322,7 @@ func (h ProviderServiceHandler) Stop(w http.ResponseWriter, r *http.Request, ps 
 		msg := fmt.Errorf("Some of the executors could not be stopped - Reason: %s", err.Error())
 		logger.Error(msg)
 		h.recordOtelException(span, msg)
-		responses.RespondWithJSON(w, http.StatusInternalServerError, err.Error())
+		RespondWithJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -332,24 +330,24 @@ func (h ProviderServiceHandler) Stop(w http.ResponseWriter, r *http.Request, ps 
 		msg := fmt.Errorf("Failed to check in executors: %v - Reason: %s", executors, err)
 		logger.Error(msg)
 		h.recordOtelException(span, msg)
-		responses.RespondWithJSON(w, http.StatusInternalServerError, msg)
+		RespondWithJSON(w, http.StatusInternalServerError, msg)
 		return
 	}
-	responses.RespondWithJSON(w, http.StatusNoContent, "")
+	RespondWithJSON(w, http.StatusNoContent, "")
 }
 
 // sendError sends an error HTTP response depending on which error has been returned.
 func sendError(w http.ResponseWriter, err error) {
 	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok {
-		responses.RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("unknown error %+v", err))
+		RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("unknown error %+v", err))
 	} else {
-		responses.RespondWithError(w, httpError.Code, httpError.Message)
+		RespondWithError(w, httpError.Code, httpError.Message)
 	}
 }
 
 // verifyStartInput verify input (json body) from a start request
-func (h ProviderServiceHandler) verifyStartInput(logger *logrus.Entry, r *http.Request) (StartRequest, error) {
+func (h ProviderServiceHandler) verifyStartInput(r *http.Request) (StartRequest, error) {
 	request := StartRequest{}
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -394,7 +392,7 @@ func (h ProviderServiceHandler) panicRecovery(
 					r.Context(),
 				).Errorf("recovering from err %+v\n %s", err, buf)
 				identifier := ps.ByName("identifier")
-				responses.RespondWithError(
+				RespondWithError(
 					w,
 					http.StatusInternalServerError,
 					fmt.Sprintf("unknown error: contact server admin with id '%s'", identifier),
