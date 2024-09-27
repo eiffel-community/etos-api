@@ -114,20 +114,17 @@ func (k KubernetesExecutor) Start(ctx context.Context, logger *logrus.Entry, exe
 							Image: executorSpec.Instructions.Image,
 							Args:  args,
 							Env:   envs,
-						},
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "etos-encryption-key",
+										},
+									},
+								},
+							}},
 					},
 					RestartPolicy: corev1.RestartPolicyNever,
-					Volumes: []corev1.Volume{
-						{
-							Name: "ssh-key-and-config",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName:  "kubernetes-provider-ssh-key",
-									DefaultMode: &SECRETMODE,
-								},
-							},
-						},
-					},
 				},
 			},
 		},
