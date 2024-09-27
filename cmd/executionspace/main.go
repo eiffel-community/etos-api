@@ -24,16 +24,16 @@ import (
 	"syscall"
 
 	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
-	"github.com/eiffel-community/etos-api/internal/executionspace/etcd"
+	"github.com/eiffel-community/etos-api/internal/database/etcd"
 	"github.com/eiffel-community/etos-api/internal/executionspace/provider"
 	"github.com/eiffel-community/etos-api/internal/logging"
+	"github.com/eiffel-community/etos-api/internal/logging/rabbitmqhook"
+	"github.com/eiffel-community/etos-api/internal/rabbitmq"
 	"github.com/eiffel-community/etos-api/internal/server"
 	"github.com/eiffel-community/etos-api/pkg/application"
+	providerservice "github.com/eiffel-community/etos-api/pkg/executionspace/v1alpha"
 	"github.com/sirupsen/logrus"
 	"github.com/snowzach/rotatefilehook"
-	"github.com/eiffel-community/etos-api/internal/executionspace/logging/rabbitmqhook"
-	"github.com/eiffel-community/etos-api/internal/executionspace/rabbitmq"
-	providerservice "github.com/eiffel-community/etos-api/pkg/executionspace/v1alpha"
 	"go.elastic.co/ecslogrus"
 )
 
@@ -94,7 +94,7 @@ func main() {
 	if err := srv.Close(ctx); err != nil {
 		log.Errorf("WebService shutdown failed: %+v", err)
 	}
-	log.Info("Wait for checkout, flash and checkin jobs to complete")
+	log.Info("Wait for checkout and checkin jobs to complete")
 }
 
 // fileLogging adds a hook into a slice of hooks, if the filepath configuration is set
@@ -120,12 +120,12 @@ func fileLogging(cfg config.Config) logrus.Hook {
 // remoteLogging starts a new rabbitmq publisher if the rabbitmq parameters are set
 // Warning: Must call publisher.Close() on the publisher returned from this function
 func remoteLogging(cfg config.Config) *rabbitmq.Publisher {
-	if cfg.RabbitMQHookUrl() != "" {
+	if cfg.RabbitMQHookURL() != "" {
 		if cfg.RabbitMQHookExchangeName() == "" {
 			panic("-rabbitmq_hook_exchange (env:ETOS_RABBITMQ_EXCHANGE) must be set when using -rabbitmq_hook_url (env:ETOS_RABBITMQ_URL)")
 		}
 		publisher := rabbitmq.NewPublisher(rabbitmq.PublisherConfig{
-			URL:          cfg.RabbitMQHookUrl(),
+			URL:          cfg.RabbitMQHookURL(),
 			ExchangeName: cfg.RabbitMQHookExchangeName(),
 		})
 		return publisher
@@ -133,6 +133,7 @@ func remoteLogging(cfg config.Config) *rabbitmq.Publisher {
 	return nil
 }
 
+// vcsRevision returns the current source code revision
 func vcsRevision() string {
 	buildInfo, ok := debug.ReadBuildInfo()
 	if !ok {

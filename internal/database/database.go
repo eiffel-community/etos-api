@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Opener is the common interface for database clients
 type Opener interface {
 	Open(context.Context, uuid.UUID) io.ReadWriter
 }

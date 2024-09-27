@@ -20,18 +20,18 @@ import (
 	"sync"
 
 	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
-	"github.com/eiffel-community/etos-api/internal/executionspace/database"
+	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
 )
 
 type Kubernetes struct {
-	provider
+	providerCore
 }
 
 // New creates a copy of a Kubernetes provider
 func (k Kubernetes) New(db database.Opener, cfg config.Config) Provider {
 	return &Kubernetes{
-		provider{
+		providerCore{
 			db:  db,
 			cfg: cfg,
 			url: fmt.Sprintf("%s/v1alpha/executor/kubernetes", cfg.Hostname()),

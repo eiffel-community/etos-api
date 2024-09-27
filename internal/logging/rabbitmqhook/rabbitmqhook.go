@@ -19,9 +19,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/eiffel-community/etos-api/internal/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
-	"github.com/eiffel-community/etos-api/internal/executionspace/rabbitmq"
 )
 
 var fieldMap = logrus.FieldMap{

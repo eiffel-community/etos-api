@@ -36,7 +36,7 @@ import (
 
 var (
 	BACKOFFLIMIT int32 = 0
-	PARALLELL    int32 = 1
+	PARALLEL     int32 = 1
 	COMPLETIONS  int32 = 1
 	SECRETMODE   int32 = 0600
 )
@@ -105,7 +105,7 @@ func (k KubernetesExecutor) Start(ctx context.Context, logger *logrus.Entry, exe
 		Spec: batchv1.JobSpec{
 			BackoffLimit: &BACKOFFLIMIT,
 			Completions:  &COMPLETIONS,
-			Parallelism:  &PARALLELL,
+			Parallelism:  &PARALLEL,
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -114,22 +114,6 @@ func (k KubernetesExecutor) Start(ctx context.Context, logger *logrus.Entry, exe
 							Image: executorSpec.Instructions.Image,
 							Args:  args,
 							Env:   envs,
-							EnvFrom: []corev1.EnvFromSource{
-								{
-									SecretRef: &corev1.SecretEnvSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "etos-encryption-key",
-										},
-									},
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "ssh-key-and-config",
-									ReadOnly:  true,
-									MountPath: "/home/etos/keys",
-								},
-							},
 						},
 					},
 					RestartPolicy: corev1.RestartPolicyNever,
@@ -150,13 +134,7 @@ func (k KubernetesExecutor) Start(ctx context.Context, logger *logrus.Entry, exe
 	}
 	job, err := jobs.Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
-        logger.WithField("user_log", true).Infof("Create job error: %s", err)
-        logger.WithField("user_log", true).Infof("Create job error: %s", err.Error())
-
-        unwrappedErr := errors.Unwrap(err)
-        if unwrappedErr != nil {
-            logger.WithField("user_log", true).Infof("Unwrapped Error: %s", unwrappedErr)
-        }
+		logger.WithField("user_log", true).Errorf("Create job error: %s", err)
 		return "", err
 	}
 	return job.ObjectMeta.Name, nil
@@ -198,7 +176,7 @@ func (k KubernetesExecutor) Wait(ctx context.Context, logger *logrus.Entry, name
 	for {
 		select {
 		case <-ctx.Done():
-			return "", "", fmt.Errorf("timed out waiting for kubernets job %s to start", name)
+			return "", "", fmt.Errorf("timed out waiting for Kubernetes job %s to start", name)
 		case event := <-watcher.ResultChan():
 			pod := event.Object.(*corev1.Pod)
 			if isReady(pod) {
@@ -209,20 +187,20 @@ func (k KubernetesExecutor) Wait(ctx context.Context, logger *logrus.Entry, name
 }
 
 // Stop stops a test runner Kubernetes pod
-func (k KubernetesExecutor) Stop(ctx context.Context, logger *logrus.Entry, id string) error {
+func (k KubernetesExecutor) Stop(ctx context.Context, logger *logrus.Entry, name string) error {
 	logger.WithField("user_log", true).Info("Stopping test runner Kubernetes pod")
 	jobs := k.client.BatchV1().Jobs(k.namespace)
 	propagation := metav1.DeletePropagationForeground
-	err := jobs.Delete(ctx, id, metav1.DeleteOptions{PropagationPolicy: &propagation})
+	err := jobs.Delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 	if err != nil {
 		logger.Error(err.Error())
 		return err
 	}
-	watcher, err := k.client.CoreV1().Pods(k.namespace).Watch(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", id)})
+	watcher, err := k.client.CoreV1().Pods(k.namespace).Watch(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", name)})
 	if err != nil {
 		if net.IsProbableEOF(err) {
 			// Assume that there are no more active jobs.
-			logger.Warningf("Did not find any pods for 'job-name=%s', reason=EOF. Assuming that there are no more active jobs", id)
+			logger.Warningf("Did not find any pods for 'job-name=%s', reason=EOF. Assuming that there are no more active jobs", name)
 			return nil
 		}
 		return err
@@ -231,7 +209,7 @@ func (k KubernetesExecutor) Stop(ctx context.Context, logger *logrus.Entry, id s
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting for kubernets job %s to stop", id)
+			return fmt.Errorf("timed out waiting for Kubernetes job %s to stop", name)
 		case event := <-watcher.ResultChan():
 			if event.Type == watch.Deleted {
 				return nil

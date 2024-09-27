@@ -22,6 +22,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Executor is the common interface for test executor instances
 type Executor interface {
 	Name() string
 	Start(context.Context, *logrus.Entry, *executionspace.ExecutorSpec) (string, error)

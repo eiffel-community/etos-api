@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
-	"github.com/eiffel-community/etos-api/internal/executionspace/database"
+	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
 	"github.com/eiffel-community/etos-api/pkg/executionspace/executionspace"
 	"github.com/google/uuid"
@@ -48,9 +48,9 @@ type ExecutorConfig struct {
 	Environment    map[string]string
 }
 
-// provider partially implements the Provider interface. To use it it should
+// providerCore partially implements the Provider interface. To use it it should
 // be included into another struct that implements the rest of the interface.
-type provider struct {
+type providerCore struct {
 	db       database.Opener
 	cfg      config.Config
 	url      string
@@ -58,8 +58,8 @@ type provider struct {
 	executor executor.Executor
 }
 
-// Get fetches execution space status from a database
-func (e provider) Status(logger *logrus.Entry, ctx context.Context, id uuid.UUID) (*executionspace.ExecutionSpace, error) {
+// Status fetches execution space status from a database
+func (e providerCore) Status(logger *logrus.Entry, ctx context.Context, id uuid.UUID) (*executionspace.ExecutionSpace, error) {
 	e.active.Add(1)
 	defer e.active.Done()
 
@@ -96,7 +96,7 @@ func (e provider) Status(logger *logrus.Entry, ctx context.Context, id uuid.UUID
 }
 
 // Checkout checks out an execution space and stores it in a database
-func (e provider) Checkout(logger *logrus.Entry, ctx context.Context, cfg ExecutorConfig) {
+func (e providerCore) Checkout(logger *logrus.Entry, ctx context.Context, cfg ExecutorConfig) {
 	e.active.Add(1)
 	defer e.active.Done()
 
@@ -130,7 +130,7 @@ func (e provider) Checkout(logger *logrus.Entry, ctx context.Context, cfg Execut
 }
 
 // Checkin checks in an execution space by removing it from database
-func (e provider) Checkin(logger *logrus.Entry, ctx context.Context, executors []executionspace.ExecutorSpec) error {
+func (e providerCore) Checkin(logger *logrus.Entry, ctx context.Context, executors []executionspace.ExecutorSpec) error {
 	e.active.Add(1)
 	defer e.active.Done()
 	for _, executor := range executors {
@@ -143,18 +143,18 @@ func (e provider) Checkin(logger *logrus.Entry, ctx context.Context, executors [
 }
 
 // Executor returns the executor of this provider
-func (e provider) Executor() executor.Executor {
+func (e providerCore) Executor() executor.Executor {
 	return e.executor
 }
 
 // SaveExecutor saves an executor specification into a database
-func (e provider) SaveExecutor(ctx context.Context, executorSpec executionspace.ExecutorSpec) error {
+func (e providerCore) SaveExecutor(ctx context.Context, executorSpec executionspace.ExecutorSpec) error {
 	client := e.db.Open(ctx, executorSpec.ID)
 	return executorSpec.Save(client)
 }
 
 // Job gets the Build ID of a test runner execution.
-func (e provider) Job(ctx context.Context, id uuid.UUID) (string, error) {
+func (e providerCore) Job(ctx context.Context, id uuid.UUID) (string, error) {
 	executorSpec, err := e.ExecutorSpec(ctx, id)
 	if err != nil {
 		return "", err
@@ -166,18 +166,18 @@ func (e provider) Job(ctx context.Context, id uuid.UUID) (string, error) {
 }
 
 // ExecutorSpec returns the specification of an executor stored in database
-func (e provider) ExecutorSpec(ctx context.Context, id uuid.UUID) (*executionspace.ExecutorSpec, error) {
+func (e providerCore) ExecutorSpec(ctx context.Context, id uuid.UUID) (*executionspace.ExecutorSpec, error) {
 	client := e.db.Open(ctx, id)
 	return executionspace.LoadExecutorSpec(client)
 }
 
 // ExecutionSPace returns the execution space stored in database
-func (e provider) ExecutionSpace(ctx context.Context, id uuid.UUID) (*executionspace.ExecutionSpace, error) {
+func (e providerCore) ExecutionSpace(ctx context.Context, id uuid.UUID) (*executionspace.ExecutionSpace, error) {
 	client := e.db.Open(ctx, id)
 	return executionspace.Load(client)
 }
 
 // Done waits for all jobs to be done
-func (e provider) Done() {
+func (e providerCore) Done() {
 	e.active.Wait()
 }

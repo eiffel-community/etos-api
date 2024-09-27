@@ -21,7 +21,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/eiffel-community/eiffelevents-sdk-go"
 )
@@ -38,15 +37,10 @@ type activityResponse struct {
 	Items []eiffelevents.ActivityTriggeredV4 `json:"items"`
 }
 
-// eventRepository returns the event repository URL to use.
-func eventRepository() string {
-	return os.Getenv("EVENT_REPOSITORY_HOST")
-}
-
 // ActivityTriggered returns an activity triggered event from the event repository
-func ActivityTriggered(ctx context.Context, id string) (*eiffelevents.ActivityTriggeredV4, error) {
+func ActivityTriggered(ctx context.Context, eventRepositoryURL string, id string) (*eiffelevents.ActivityTriggeredV4, error) {
 	query := map[string]string{"meta.id": id, "meta.type": "EiffelActivityTriggeredEvent"}
-	body, err := getEvents(ctx, query)
+	body, err := getEvents(ctx, eventRepositoryURL, query)
 	if err != nil {
 		return nil, err
 	}
@@ -61,15 +55,15 @@ func ActivityTriggered(ctx context.Context, id string) (*eiffelevents.ActivityTr
 }
 
 // MainSuiteStarted returns a test suite started event from the event repository
-func MainSuiteStarted(ctx context.Context, id string) (*eiffelevents.TestSuiteStartedV3, error) {
-	activity, err := ActivityTriggered(ctx, id)
+func MainSuiteStarted(ctx context.Context, eventRepositoryURL string, id string) (*eiffelevents.TestSuiteStartedV3, error) {
+	activity, err := ActivityTriggered(ctx, eventRepositoryURL, id)
 	if err != nil {
 		return nil, err
 	}
 	testSuiteID := activity.Links.FindFirst("CONTEXT")
 
 	query := map[string]string{"meta.id": testSuiteID, "meta.type": "EiffelTestSuiteStartedEvent"}
-	body, err := getEvents(ctx, query)
+	body, err := getEvents(ctx, eventRepositoryURL, query)
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +78,9 @@ func MainSuiteStarted(ctx context.Context, id string) (*eiffelevents.TestSuiteSt
 }
 
 // TestSuiteStarted returns a test suite started event from the event repository
-func TestSuiteStarted(ctx context.Context, id string, name string) (*eiffelevents.TestSuiteStartedV3, error) {
+func TestSuiteStarted(ctx context.Context, eventRepositoryURL string, id string, name string) (*eiffelevents.TestSuiteStartedV3, error) {
 	query := map[string]string{"links.target": id, "meta.type": "EiffelTestSuiteStartedEvent", "data.name": name}
-	body, err := getEvents(ctx, query)
+	body, err := getEvents(ctx, eventRepositoryURL, query)
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +95,9 @@ func TestSuiteStarted(ctx context.Context, id string, name string) (*eiffelevent
 }
 
 // EnvironmentDefined returns an environment defined event from the event repository
-func EnvironmentDefined(ctx context.Context, id string) (*eiffelevents.EnvironmentDefinedV3, error) {
+func EnvironmentDefined(ctx context.Context, eventRepositoryURL string, id string) (*eiffelevents.EnvironmentDefinedV3, error) {
 	query := map[string]string{"meta.id": id, "meta.type": "EiffelEnvironmentDefinedEvent"}
-	body, err := getEvents(ctx, query)
+	body, err := getEvents(ctx, eventRepositoryURL, query)
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +112,8 @@ func EnvironmentDefined(ctx context.Context, id string) (*eiffelevents.Environme
 }
 
 // getEvents queries the event repository and returns the response for others to parse
-func getEvents(ctx context.Context, query map[string]string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", eventRepository(), nil)
+func getEvents(ctx context.Context, eventRepositoryURL string, query map[string]string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", eventRepositoryURL, nil)
 	if err != nil {
 		return nil, err
 	}
