@@ -26,9 +26,9 @@ import (
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
-	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -38,14 +38,14 @@ import (
 type V1Alpha1Application struct {
 	logger   *logrus.Entry
 	cfg      config.Config
-	database *clientv3.Client
+	database database.Opener
 	wg       *sync.WaitGroup
 }
 
 type V1Alpha1Handler struct {
 	logger   *logrus.Entry
 	cfg      config.Config
-	database *clientv3.Client
+	database database.Opener
 	wg       *sync.WaitGroup
 }
 
@@ -72,11 +72,11 @@ func (a *V1Alpha1Application) Close() {
 }
 
 // New returns a new V1Alpha1Application object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cli *clientv3.Client) application.Application {
+func New(cfg config.Config, log *logrus.Entry, ctx context.Context, db database.Opener) application.Application {
 	return &V1Alpha1Application{
 		logger:   log,
 		cfg:      cfg,
-		database: cli,
+		database: db,
 		wg:       &sync.WaitGroup{},
 	}
 }
@@ -153,6 +153,8 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	client := h.database.Open(r.Context(), checkOutID)
+	client.Write()
 	_, err = h.database.Put(r.Context(), fmt.Sprintf("/iut/%s", checkOutID.String()), string(iuts))
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/database/etcd"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	server "github.com/eiffel-community/etos-api/internal/server"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -32,7 +33,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/snowzach/rotatefilehook"
 	"go.elastic.co/ecslogrus"
-	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // main sets up logging and starts up the webserver.
@@ -63,16 +63,18 @@ func main() {
 	})
 
 	// Database connection test
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{cfg.DatabaseURI()},
-		DialTimeout: 5 * time.Second,
-	})
-	if err != nil {
-		log.WithError(err).Fatal("failed to create etcd connection")
-	}
+	// cli, err := clientv3.New(clientv3.Config{
+	// 	Endpoints:   []string{cfg.DatabaseURI()},
+	// 	DialTimeout: 5 * time.Second,
+	// })
+	// if err != nil {
+	// 	log.WithError(err).Fatal("failed to create etcd connection")
+	// }
 
+	iutEtcdTreePrefix := "/iut"
+	db := etcd.New(cfg, logger, iutEtcdTreePrefix)
 	log.Info("Loading v1alpha1 routes")
-	v1alpha1App := v1alpha1.New(cfg, log, ctx, cli)
+	v1alpha1App := v1alpha1.New(cfg, log, ctx, db)
 	defer v1alpha1App.Close()
 	router := application.New(v1alpha1App)
 
