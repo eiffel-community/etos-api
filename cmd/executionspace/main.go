@@ -69,7 +69,8 @@ func main() {
 	})
 
 	log.Info("Loading v1alpha routes")
-	provider := provider.Kubernetes{}.New(etcd.New(cfg, logger), cfg)
+	executionSpaceEtcdTreePrefix := "/execution-space"
+	provider := provider.Kubernetes{}.New(etcd.New(cfg, logger, executionSpaceEtcdTreePrefix), cfg)
 	providerServiceApp := providerservice.New(cfg, log, provider, ctx)
 	defer providerServiceApp.Close()
 	handler := application.New(providerServiceApp)

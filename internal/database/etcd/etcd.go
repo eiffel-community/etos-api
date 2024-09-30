@@ -29,21 +29,20 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-const etcdTreePrefix string = "/execution-space"
-
 // TODO: refactor the client so that it does not store data it fetched.
 // However, without it implementing the database.Opener interface would be more complex (methods readByte, read).
 type Etcd struct {
-	cfg     config.Config
-	client  *clientv3.Client
-	ID      uuid.UUID
-	ctx     context.Context
-	data    []byte
-	hasRead bool
+	cfg        config.Config
+	client     *clientv3.Client
+	ID         uuid.UUID
+	ctx        context.Context
+	treePrefix string
+	data       []byte
+	hasRead    bool
 }
 
 // New returns a new Etcd Object/Struct.
-func New(cfg config.Config, logger *logrus.Logger) database.Opener {
+func New(cfg config.Config, logger *logrus.Logger, treePrefix string) database.Opener {
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{cfg.DatabaseURI()},
 		DialTimeout: 5 * time.Second,
@@ -53,8 +52,9 @@ func New(cfg config.Config, logger *logrus.Logger) database.Opener {
 	}
 
 	return Etcd{
-		client: client,
-		cfg:    cfg,
+		client:     client,
+		cfg:        cfg,
+		treePrefix: treePrefix,
 	}
 }
 
@@ -73,7 +73,7 @@ func (etcd Etcd) Write(p []byte) (int, error) {
 	if etcd.ID == uuid.Nil {
 		return 0, errors.New("please create a new etcd client using Open")
 	}
-	key := fmt.Sprintf("%s/%s", etcdTreePrefix, etcd.ID.String())
+	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
 	_, err := etcd.client.Put(etcd.ctx, key, string(p))
 	if err != nil {
 		return 0, err
@@ -95,7 +95,7 @@ func (etcd *Etcd) Read(p []byte) (n int, err error) {
 		return n, err
 	}
 
-	key := fmt.Sprintf("%s/%s", etcdTreePrefix, etcd.ID.String())
+	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
 
 	if !etcd.hasRead {
 		resp, err := etcd.client.Get(etcd.ctx, key)
