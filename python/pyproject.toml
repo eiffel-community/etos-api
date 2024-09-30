@@ -30,6 +30,7 @@ dependencies = [
     "jsontas~=1.4",
     "packageurl-python~=0.11",
     "cryptography>=42.0.4,<43.0.0",
+    "setuptools_scm~=8.0"
 ]
 
 [options]
