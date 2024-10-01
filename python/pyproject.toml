@@ -72,4 +72,4 @@ norecursedirs = ["dist", "build", ".tox"]
 testpaths = ["tests"]
 
 [tool.setuptools_scm]
-root = "../.."
+root = ".."
