@@ -33,7 +33,6 @@ type Config interface {
 	LogLevel() string
 	LogFilePath() string
 	Timeout() time.Duration
-	KubernetesNamespace() string
 	ExecutionSpaceWaitTimeout() time.Duration
 	RabbitMQHookURL() string
 	RabbitMQHookExchangeName() string
@@ -53,7 +52,6 @@ type cfg struct {
 	timeout                   time.Duration
 	databaseHost              string
 	databasePort              string
-	kubernetesNamespace       string
 	executionSpaceWaitTimeout time.Duration
 	rabbitmqHookURL           string
 	rabbitmqHookExchange      string
@@ -84,7 +82,7 @@ func Get() Config {
 	flag.DurationVar(&conf.timeout, "timeout", defaultTimeout, "Maximum timeout for requests to Execution space provider Service.")
 	flag.StringVar(&conf.databaseHost, "database_host", EnvOrDefault("ETOS_ETCD_HOST", "etcd-client"), "Host to ETOS database")
 	flag.StringVar(&conf.databasePort, "database_port", EnvOrDefault("ETOS_ETCD_PORT", "2379"), "Port to ETOS database")
-	flag.StringVar(&conf.kubernetesNamespace, "kubernetes_namespace", os.Getenv("KUBERNETES_NAMESPACE"), "Namespace to start k8s jobs")
+	flag.StringVar(&conf.etosNamespace, "etos_namespace", os.Getenv("ETOS_NAMESPACE"), "Namespace to start testrunner k8s jobs")
 	flag.DurationVar(&conf.executionSpaceWaitTimeout, "execution space wait timeout", executionSpaceWaitTimeout, "Timeout duration to wait when trying to checkout execution space(s)")
 	flag.StringVar(&conf.rabbitmqHookURL, "rabbitmq_hook_url", os.Getenv("ETOS_RABBITMQ_URL"), "URL to the ETOS rabbitmq for logs")
 	flag.StringVar(&conf.rabbitmqHookExchange, "rabbitmq_hook_exchange", os.Getenv("ETOS_RABBITMQ_EXCHANGE"), "Exchange to use for the ETOS rabbitmq for logs")
@@ -128,11 +126,6 @@ func (c *cfg) Timeout() time.Duration {
 	return c.timeout
 }
 
-// KubernetesNamespace returns the namespace where k8s jobs shall be deployed.
-func (c *cfg) KubernetesNamespace() string {
-	return c.kubernetesNamespace
-}
-
 // ExecutionSpaceWaitTimeout returns the timeout for checking out execution spaces.
 func (c *cfg) ExecutionSpaceWaitTimeout() time.Duration {
 	return c.executionSpaceWaitTimeout
@@ -158,7 +151,7 @@ func (c *cfg) DatabaseURI() string {
 	return fmt.Sprintf("%s:%s", c.databaseHost, c.databasePort)
 }
 
-// ETOSNamespace returns the ETOS namespace.
+// ETOSNamespace returns the namespace where k8s jobs shall be deployed.
 func (c *cfg) ETOSNamespace() string {
 	return c.etosNamespace
 }
