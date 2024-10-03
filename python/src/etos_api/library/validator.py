@@ -16,7 +16,6 @@
 """ETOS API suite validator module."""
 import logging
 import asyncio
-import random
 from typing import List, Union
 from uuid import UUID
 

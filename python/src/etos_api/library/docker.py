@@ -92,8 +92,8 @@ class Docker:
             else:
                 query[key] = value.strip('"')
 
-        if not url:
-            raise ValueError(f"No realm found in www-authenticate header: {www_auth_header}")
+        if not isinstance(url, str) or not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError(f"No realm URL found in www-authenticate header: {www_auth_header}")
 
         async with session.get(url, params=query) as response:
             response.raise_for_status()
