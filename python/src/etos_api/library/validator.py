@@ -199,9 +199,7 @@ class SuiteValidator:
             for test_runner in test_runners:
                 for attempt in range(5):
                     if attempt > 0:
-                        span.add_event(
-                            f"Test runner validation unsuccessful, retry #{attempt}"
-                        )
+                        span.add_event(f"Test runner validation unsuccessful, retry #{attempt}")
                         self.logger.warning(
                             "Test runner %s validation unsuccessful, retry #%d",
                             test_runner,
