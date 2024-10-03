@@ -198,18 +198,21 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
-                for attempt in range(3):
+                for attempt in range(5):
+                    if attempt > 0:
+                        span.add_event(
+                            f"Test runner validation unsuccessful, retry #{attempt}"
+                        )
+                        self.logger.warning(
+                            "Test runner %s validation unsuccessful, retry #%d",
+                            test_runner,
+                            attempt,
+                        )
                     result = await docker.digest(test_runner)
                     if result:
                         break
-                    span.add_event(
-                        f"Test runner validation unsuccessful, retrying {3 - attempt} more times"
-                    )
-                    self.logger.warning(
-                        "Test runner %s validation unsuccessful, retrying %d more times",
-                        test_runner,
-                        3 - attempt,
-                    )
-                    await asyncio.sleep(random.randint(1, 3))
+                    # Total wait time with 5 attempts: 55 seconds
+                    sleep_time = (attempt + 1) ** 2
+                    await asyncio.sleep(sleep_time)
 
                 assert result is not None, f"Test runner {test_runner} not found"
