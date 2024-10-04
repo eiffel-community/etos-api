@@ -97,7 +97,10 @@ class TestRunnerValidationCache:
         timestamp = cls.get_timestamp(test_runner)
         if timestamp is None:
             return False
-        return (timestamp + cls.TESTRUNNER_VALIDATION_WINDOW) > time.time()
+        if (timestamp + cls.TESTRUNNER_VALIDATION_WINDOW) > time.time():
+            return True
+        cls.remove(test_runner)
+        return False
 
 
 class Environment(BaseModel):
