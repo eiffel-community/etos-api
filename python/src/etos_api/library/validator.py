@@ -16,6 +16,7 @@
 """ETOS API suite validator module."""
 import logging
 import asyncio
+import time
 from typing import List, Union
 from uuid import UUID
 
@@ -30,6 +31,11 @@ from opentelemetry import trace
 from etos_api.library.docker import Docker
 
 # pylint:disable=too-few-public-methods
+
+# Cache for lazy testrunner validation. Keys: container names, values: timestamp.
+# Only passed validations are cached.
+TESTRUNNER_VALIDATION_CACHE = {}
+TESTRUNNER_VALIDATION_WINDOW = 1800
 
 
 class Environment(BaseModel):
@@ -197,6 +203,15 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
+                if test_runner in TESTRUNNER_VALIDATION_CACHE:
+                    timestamp = TESTRUNNER_VALIDATION_CACHE[test_runner]
+                    if (timestamp + TESTRUNNER_VALIDATION_WINDOW) > time.time():
+                        self.logger.info(
+                            "Using cached testrunner validation result: %s", test_runner
+                        )
+                        continue
+                    del TESTRUNNER_VALIDATION_CACHE[test_runner]
+
                 for attempt in range(5):
                     if attempt > 0:
                         span.add_event(f"Test runner validation unsuccessful, retry #{attempt}")
@@ -207,6 +222,8 @@ class SuiteValidator:
                         )
                     result = await docker.digest(test_runner)
                     if result:
+                        # only passed validations shall be cached
+                        TESTRUNNER_VALIDATION_CACHE[test_runner] = time.time()
                         break
                     # Total wait time with 5 attempts: 55 seconds
                     sleep_time = (attempt + 1) ** 2
