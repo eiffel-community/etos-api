@@ -100,8 +100,7 @@ func (etcd *Etcd) readByte() byte {
 // Read reads data from etcd and returns p bytes to user
 func (etcd *Etcd) Read(p []byte) (n int, err error) {
 	if etcd.ID == uuid.Nil {
-		err = errors.New("please create a new etcd client using NewWithID")
-		return n, err
+		return 0, errors.New("please create a new etcd client using NewWithID")
 	}
 
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
@@ -109,26 +108,61 @@ func (etcd *Etcd) Read(p []byte) (n int, err error) {
 	if !etcd.hasRead {
 		resp, err := etcd.client.Get(etcd.ctx, key)
 		if err != nil {
-			return n, err
+			return 0, err
 		}
 		if len(resp.Kvs) == 0 {
-			return n, io.EOF
+			return 0, io.EOF
 		}
 		etcd.data = resp.Kvs[0].Value
 		etcd.hasRead = true
 	}
 
 	if len(etcd.data) == 0 {
-		return n, io.EOF
+		return 0, io.EOF
 	}
-	if c := cap(p); c > 0 {
-		for n < c {
-			p[n] = etcd.readByte()
-			n++
-			if len(etcd.data) == 0 {
-				return n, io.EOF
-			}
-		}
+
+	// Copy as much data as possible to p
+	n = copy(p, etcd.data)
+	etcd.data = etcd.data[n:]
+
+	if n == 0 {
+		return 0, io.EOF
 	}
+
 	return n, nil
 }
+
+// func (etcd *Etcd) Read(p []byte) (n int, err error) {
+// 	if etcd.ID == uuid.Nil {
+// 		err = errors.New("please create a new etcd client using NewWithID")
+// 		return n, err
+// 	}
+
+// 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
+
+// 	if !etcd.hasRead {
+// 		resp, err := etcd.client.Get(etcd.ctx, key)
+// 		if err != nil {
+// 			return n, err
+// 		}
+// 		if len(resp.Kvs) == 0 {
+// 			return n, io.EOF
+// 		}
+// 		etcd.data = resp.Kvs[0].Value
+// 		etcd.hasRead = true
+// 	}
+
+// 	if len(etcd.data) == 0 {
+// 		return n, io.EOF
+// 	}
+// 	if c := cap(p); c > 0 {
+// 		for n < c {
+// 			p[n] = etcd.readByte()
+// 			n++
+// 			if len(etcd.data) == 0 {
+// 				return n, io.EOF
+// 			}
+// 		}
+// 	}
+// 	return n, nil
+// }
