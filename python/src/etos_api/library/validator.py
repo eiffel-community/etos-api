@@ -18,7 +18,6 @@ import logging
 import asyncio
 import time
 from typing import List, Union
-from threading import Lock
 from uuid import UUID
 
 import requests
@@ -42,10 +41,10 @@ class TestRunnerValidationCache:
     TESTRUNNER_VALIDATION_CACHE = {}
     TESTRUNNER_VALIDATION_WINDOW = 1800  # seconds
 
-    lock = Lock()
+    lock = asyncio.Lock()
 
     @classmethod
-    def get_timestamp(cls, test_runner: str) -> Union[float, None]:
+    async def get_timestamp(cls, test_runner: str) -> Union[float, None]:
         """Get latest passed validation timestamp for the given testrunner.
 
         :param test_runner: test runner container name
@@ -53,13 +52,13 @@ class TestRunnerValidationCache:
         :return: validation timestamp or none if not found
         :rtype: float or NoneType
         """
-        with cls.lock:
+        async with cls.lock:
             if test_runner in cls.TESTRUNNER_VALIDATION_CACHE:
                 return cls.TESTRUNNER_VALIDATION_CACHE[test_runner]
         return None
 
     @classmethod
-    def set_timestamp(cls, test_runner: str, timestamp: float) -> None:
+    async def set_timestamp(cls, test_runner: str, timestamp: float) -> None:
         """Set passed validation timestamp for the given testrunner.
 
         :param test_runner: test runner container name
@@ -69,11 +68,11 @@ class TestRunnerValidationCache:
         :return: none
         :rtype: NoneType
         """
-        with cls.lock:
+        async with cls.lock:
             cls.TESTRUNNER_VALIDATION_CACHE[test_runner] = timestamp
 
     @classmethod
-    def remove(cls, test_runner: str) -> None:
+    async def remove(cls, test_runner: str) -> None:
         """Remove the given test runner from the validation cache.
 
         :param test_runner: test runner container name
@@ -81,12 +80,12 @@ class TestRunnerValidationCache:
         :return: none
         :rtype: NoneType
         """
-        with cls.lock:
+        async with cls.lock:
             if test_runner in cls.TESTRUNNER_VALIDATION_CACHE:
                 del cls.TESTRUNNER_VALIDATION_CACHE[test_runner]
 
     @classmethod
-    def is_test_runner_valid(cls, test_runner: str) -> bool:
+    async def is_test_runner_valid(cls, test_runner: str) -> bool:
         """Determine if the given test runner is valid.
 
         :param test_runner: test runner container name
@@ -94,12 +93,12 @@ class TestRunnerValidationCache:
         :return: validation result from cache
         :rtype: bool
         """
-        timestamp = cls.get_timestamp(test_runner)
+        timestamp = await cls.get_timestamp(test_runner)
         if timestamp is None:
             return False
         if (timestamp + cls.TESTRUNNER_VALIDATION_WINDOW) > time.time():
             return True
-        cls.remove(test_runner)
+        await cls.remove(test_runner)
         return False
 
 
@@ -268,7 +267,7 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
-                if TestRunnerValidationCache.is_test_runner_valid(test_runner):
+                if await TestRunnerValidationCache.is_test_runner_valid(test_runner):
                     self.logger.info("Using cached test runner validation result: %s", test_runner)
                     continue
                 for attempt in range(5):
@@ -282,7 +281,7 @@ class SuiteValidator:
                     result = await docker.digest(test_runner)
                     if result:
                         # only passed validations shall be cached
-                        TestRunnerValidationCache.set_timestamp(test_runner, time.time())
+                        await TestRunnerValidationCache.set_timestamp(test_runner, time.time())
                         break
                     # Total wait time with 5 attempts: 55 seconds
                     sleep_time = (attempt + 1) ** 2
