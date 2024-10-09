@@ -129,8 +129,6 @@ type StopRequest struct {
 func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
-	logger.Infof("Start request: start")
-
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 	}
@@ -141,7 +139,7 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 
 	var startReq StartRequest
 	if err := json.NewDecoder(r.Body).Decode(&startReq); err != nil {
-		h.logger.Errorf("Failed to decode request body: %s", r.Body)
+		logger.Errorf("Failed to decode request body: %s", r.Body)
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -158,9 +156,6 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	for i := range purls {
 		purls[i] = purl
 	}
-	logger.Infof("Purls: %s", purls)
-	logger.Infof("ArtifactIdentity: %s", startReq.ArtifactIdentity)
-
 	iuts, err := json.Marshal(purls)
 	if err != nil {
 		logger.Errorf("Failed to marshal purls: %s", purls)
@@ -178,8 +173,6 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusOK)
 	response, _ := json.Marshal(startResp)
 	_, _ = w.Write(response)
-	logger.Infof("Start request: end. Written: /iut/%s/%s", identifier, iuts)
-
 }
 
 // Status creates a simple DONE Status response with IUTs.
@@ -189,7 +182,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 	}
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
-	logger.Infof("Status request: start")
 
 	id, err := uuid.Parse(r.URL.Query().Get("id"))
 	client := h.database.Open(r.Context(), identifier)
@@ -198,7 +190,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 	byteCount, err := client.Read(data)
 	data = data[:byteCount]
 
-	logger.Infof("Reading /iut/%s, %d bytes", identifier, byteCount)
 	if err != nil {
 		logger.Errorf("Failed to look up status request id: %s, %s", identifier, err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
@@ -219,7 +210,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	logger.Infof("Status request: end")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(response)
 
@@ -228,8 +218,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 // Stop deletes the given IUTs from the database and returns an empty response.
 func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
-	h.logger.Infof("Stop request: start")
-
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 	}
@@ -249,7 +237,6 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.logger.Infof("Stop request: end")
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -122,7 +122,13 @@ func (etcd *Etcd) Read(p []byte) (n int, err error) {
 	}
 
 	// Copy as much data as possible to p
+	// The copy function copies the minimum of len(p) and len(etcd.data) bytes from etcd.data to p
+	// It returns the number of bytes copied, which is stored in n
 	n = copy(p, etcd.data)
+
+	// Update etcd.data to remove the portion of data that has already been copied to p
+	// etcd.data[n:] creates a new slice that starts from the n-th byte to the end of the original slice
+	// This effectively removes the first n bytes from etcd.data, ensuring that subsequent reads start from the correct position
 	etcd.data = etcd.data[n:]
 
 	if n == 0 {
@@ -131,38 +137,3 @@ func (etcd *Etcd) Read(p []byte) (n int, err error) {
 
 	return n, nil
 }
-
-// func (etcd *Etcd) Read(p []byte) (n int, err error) {
-// 	if etcd.ID == uuid.Nil {
-// 		err = errors.New("please create a new etcd client using NewWithID")
-// 		return n, err
-// 	}
-
-// 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
-
-// 	if !etcd.hasRead {
-// 		resp, err := etcd.client.Get(etcd.ctx, key)
-// 		if err != nil {
-// 			return n, err
-// 		}
-// 		if len(resp.Kvs) == 0 {
-// 			return n, io.EOF
-// 		}
-// 		etcd.data = resp.Kvs[0].Value
-// 		etcd.hasRead = true
-// 	}
-
-// 	if len(etcd.data) == 0 {
-// 		return n, io.EOF
-// 	}
-// 	if c := cap(p); c > 0 {
-// 		for n < c {
-// 			p[n] = etcd.readByte()
-// 			n++
-// 			if len(etcd.data) == 0 {
-// 				return n, io.EOF
-// 			}
-// 		}
-// 	}
-// 	return n, nil
-// }
