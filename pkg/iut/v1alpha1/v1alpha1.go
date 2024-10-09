@@ -26,9 +26,9 @@ import (
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
-	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -38,14 +38,14 @@ import (
 type V1Alpha1Application struct {
 	logger   *logrus.Entry
 	cfg      config.Config
-	database *clientv3.Client
+	database database.Opener
 	wg       *sync.WaitGroup
 }
 
 type V1Alpha1Handler struct {
 	logger   *logrus.Entry
 	cfg      config.Config
-	database *clientv3.Client
+	database database.Opener
 	wg       *sync.WaitGroup
 }
 
@@ -71,11 +71,11 @@ func (a *V1Alpha1Application) Close() {
 }
 
 // New returns a new V1Alpha1Application object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cli *clientv3.Client) application.Application {
+func New(cfg config.Config, log *logrus.Entry, ctx context.Context, db database.Opener) application.Application {
 	return &V1Alpha1Application{
 		logger:   log,
 		cfg:      cfg,
-		database: cli,
+		database: db,
 		wg:       &sync.WaitGroup{},
 	}
 }
@@ -126,6 +126,10 @@ type StopRequest struct {
 
 // Start creates a number of IUTs and stores them in the ETCD database returning a checkout ID.
 func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+	}
 	checkOutID := uuid.New()
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -152,7 +156,8 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_, err = h.database.Put(r.Context(), fmt.Sprintf("/iut/%s", checkOutID.String()), string(iuts))
+	client := h.database.Open(r.Context(), identifier)
+	_, err = client.Write([]byte(string(iuts)))
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -165,20 +170,20 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 
 // Status creates a simple DONE Status response with IUTs.
 func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	identifier := r.Header.Get("X-Etos-Id")
+	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+	}
+
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
 	id, err := uuid.Parse(r.URL.Query().Get("id"))
 
-	key := fmt.Sprintf("/iut/%s", id)
-	dbResp, err := h.database.Get(r.Context(), key)
+	client := h.database.Open(r.Context(), identifier)
+	var data []byte
+	_, err = client.Read(data)
 	if err != nil {
 		logger.Errorf("Failed to look up status request id: %s", id)
-		RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if len(dbResp.Kvs) == 0 {
-		err = fmt.Errorf("No key found: %s", key)
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -186,7 +191,7 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 		Id:     id,
 		Status: "DONE",
 	}
-	if err = json.Unmarshal(dbResp.Kvs[0].Value, &statusResp.Iuts); err != nil {
+	if err = json.Unmarshal(data, &statusResp.Iuts); err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -201,7 +206,10 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 
 // Stop deletes the given IUTs from the database and returns an empty response.
 func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	identifier := r.Header.Get("X-Etos-Id")
+	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+	}
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
 	var stopReq StopRequest
@@ -211,7 +219,8 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_, err := h.database.Delete(r.Context(), fmt.Sprintf("/iut/%s", stopReq.Id))
+	client := h.database.Open(r.Context(), identifier)
+	_, err = client.Write(nil)
 	if err != nil {
 		logger.Errorf("Etcd delete failed: %s", err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())

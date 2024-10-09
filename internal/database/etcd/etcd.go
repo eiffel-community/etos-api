@@ -68,12 +68,21 @@ func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) io.ReadWriter {
 	}
 }
 
-// Write writes data to etcd
+// Write writes data to etcd. If data is nil, the current key will be deleted from the database.
 func (etcd Etcd) Write(p []byte) (int, error) {
 	if etcd.ID == uuid.Nil {
 		return 0, errors.New("please create a new etcd client using Open")
 	}
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
+
+	if p == nil {
+		_, err := etcd.client.Delete(etcd.ctx, key)
+		if err != nil {
+			return 0, fmt.Errorf("Failed to delete key %s: %s", key, err.Error())
+		}
+		return 0, nil
+	}
+
 	_, err := etcd.client.Put(etcd.ctx, key, string(p))
 	if err != nil {
 		return 0, err
