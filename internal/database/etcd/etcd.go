@@ -68,12 +68,21 @@ func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) io.ReadWriter {
 	}
 }
 
-// Write writes data to etcd
+// Write writes data to etcd. If data is nil, the current key will be deleted from the database.
 func (etcd Etcd) Write(p []byte) (int, error) {
 	if etcd.ID == uuid.Nil {
 		return 0, errors.New("please create a new etcd client using Open")
 	}
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
+
+	if p == nil {
+		_, err := etcd.client.Delete(etcd.ctx, key)
+		if err != nil {
+			return 0, fmt.Errorf("Failed to delete key %s: %s", key, err.Error())
+		}
+		return 0, nil
+	}
+
 	_, err := etcd.client.Put(etcd.ctx, key, string(p))
 	if err != nil {
 		return 0, err
@@ -91,8 +100,7 @@ func (etcd *Etcd) readByte() byte {
 // Read reads data from etcd and returns p bytes to user
 func (etcd *Etcd) Read(p []byte) (n int, err error) {
 	if etcd.ID == uuid.Nil {
-		err = errors.New("please create a new etcd client using NewWithID")
-		return n, err
+		return 0, errors.New("please create a new etcd client using NewWithID")
 	}
 
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
@@ -100,26 +108,32 @@ func (etcd *Etcd) Read(p []byte) (n int, err error) {
 	if !etcd.hasRead {
 		resp, err := etcd.client.Get(etcd.ctx, key)
 		if err != nil {
-			return n, err
+			return 0, err
 		}
 		if len(resp.Kvs) == 0 {
-			return n, io.EOF
+			return 0, io.EOF
 		}
 		etcd.data = resp.Kvs[0].Value
 		etcd.hasRead = true
 	}
 
 	if len(etcd.data) == 0 {
-		return n, io.EOF
+		return 0, io.EOF
 	}
-	if c := cap(p); c > 0 {
-		for n < c {
-			p[n] = etcd.readByte()
-			n++
-			if len(etcd.data) == 0 {
-				return n, io.EOF
-			}
-		}
+
+	// Copy as much data as possible to p
+	// The copy function copies the minimum of len(p) and len(etcd.data) bytes from etcd.data to p
+	// It returns the number of bytes copied, which is stored in n
+	n = copy(p, etcd.data)
+
+	// Update etcd.data to remove the portion of data that has already been copied to p
+	// etcd.data[n:] creates a new slice that starts from the n-th byte to the end of the original slice
+	// This effectively removes the first n bytes from etcd.data, ensuring that subsequent reads start from the correct position
+	etcd.data = etcd.data[n:]
+
+	if n == 0 {
+		return 0, io.EOF
 	}
+
 	return n, nil
 }
