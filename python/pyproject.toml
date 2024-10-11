@@ -1,5 +1,6 @@
 [build-system]
 requires = ["setuptools>=72", "wheel", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "etos_api"
@@ -13,6 +14,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License"
 ]
+requires-python = ">=3.9"
 dependencies = [
     "etos_lib==4.3.1",
     "etcd3gw~=2.3",
@@ -30,30 +32,15 @@ dependencies = [
     "jsontas~=1.4",
     "packageurl-python~=0.11",
     "cryptography>=42.0.4,<43.0.0",
-    "setuptools_scm~=8.0"
 ]
-
-[options]
-zip_safe = false
-include_package_data = true
-python_requires = ">=3.4"
-
-[options.packages.find]
-where = "src"
-exclude = ["tests"]
 
 [project.urls]
 Documentation = "https://etos.readthedocs.io/"
 Homepage = "https://github.com/eiffel-community/etos-api"
 Repository = "https://github.com/eiffel-community/etos-api"
 
-[project.scripts]
-
 [project.optional-dependencies]
 testing = ["pytest", "pytest-cov"]
-
-[test]
-extras = true
 
 [tool.build_sphinx]
 source_dir = "docs"
@@ -73,3 +60,6 @@ testpaths = ["tests"]
 
 [tool.setuptools_scm]
 root = ".."
+
+[tool.setuptools.packages]
+find = { where = ["src"], exclude = ["tests"] }
