@@ -146,7 +146,7 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	purl, err := packageurl.FromString(startReq.ArtifactIdentity)
 
 	if err != nil {
-		logger.Errorf("Failed to get purl from artifact identity: %s", startReq.ArtifactIdentity)
+		logger.Errorf("Failed to create a purl struct from artifact identity: %s", startReq.ArtifactIdentity)
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
