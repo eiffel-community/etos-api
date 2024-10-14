@@ -16,7 +16,11 @@
 """ETOS API suite validator module."""
 import logging
 import asyncio
+<<<<<<< HEAD
 import time
+=======
+import random
+>>>>>>> parent of 0904d92 (More robust testrunner validation retry logic (#80))
 from typing import List, Union
 from uuid import UUID
 
@@ -267,24 +271,20 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
-                if await TestRunnerValidationCache.is_test_runner_valid(test_runner):
-                    self.logger.info("Using cached test runner validation result: %s", test_runner)
-                    continue
-                for attempt in range(5):
-                    if attempt > 0:
-                        span.add_event(f"Test runner validation unsuccessful, retry #{attempt}")
-                        self.logger.warning(
-                            "Test runner %s validation unsuccessful, retry #%d",
-                            test_runner,
-                            attempt,
-                        )
+                for attempt in range(3):
                     result = await docker.digest(test_runner)
                     if result:
                         # only passed validations shall be cached
                         await TestRunnerValidationCache.set_timestamp(test_runner, time.time())
                         break
-                    # Total wait time with 5 attempts: 55 seconds
-                    sleep_time = (attempt + 1) ** 2
-                    await asyncio.sleep(sleep_time)
+                    span.add_event(
+                        f"Test runner validation unsuccessful, retrying {3 - attempt} more times"
+                    )
+                    self.logger.warning(
+                        "Test runner %s validation unsuccessful, retrying %d more times",
+                        test_runner,
+                        3 - attempt,
+                    )
+                    await asyncio.sleep(random.randint(1, 3))
 
                 assert result is not None, f"Test runner {test_runner} not found"
