@@ -15,12 +15,6 @@
 # limitations under the License.
 """ETOS API suite validator module."""
 import logging
-import asyncio
-<<<<<<< HEAD
-import time
-=======
-import random
->>>>>>> parent of 0904d92 (More robust testrunner validation retry logic (#80))
 from typing import List, Union
 from uuid import UUID
 
@@ -30,80 +24,10 @@ import requests
 from pydantic import BaseModel  # pylint:disable=no-name-in-module
 from pydantic import ValidationError, conlist, constr, field_validator
 from pydantic.fields import PrivateAttr
-from opentelemetry import trace
 
 from etos_api.library.docker import Docker
 
 # pylint:disable=too-few-public-methods
-
-
-class TestRunnerValidationCache:
-    """Lazy test runner validation via in-memory cache."""
-
-    # Cache for lazy testrunner validation. Keys: container names, values: timestamp.
-    # Only passed validations are cached.
-    TESTRUNNER_VALIDATION_CACHE = {}
-    TESTRUNNER_VALIDATION_WINDOW = 1800  # seconds
-
-    lock = asyncio.Lock()
-
-    @classmethod
-    async def get_timestamp(cls, test_runner: str) -> Union[float, None]:
-        """Get latest passed validation timestamp for the given testrunner.
-
-        :param test_runner: test runner container name
-        :type test_runner: str
-        :return: validation timestamp or none if not found
-        :rtype: float or NoneType
-        """
-        async with cls.lock:
-            if test_runner in cls.TESTRUNNER_VALIDATION_CACHE:
-                return cls.TESTRUNNER_VALIDATION_CACHE[test_runner]
-        return None
-
-    @classmethod
-    async def set_timestamp(cls, test_runner: str, timestamp: float) -> None:
-        """Set passed validation timestamp for the given testrunner.
-
-        :param test_runner: test runner container name
-        :type test_runner: str
-        :param timestamp: test runner container name
-        :type timestamp: float
-        :return: none
-        :rtype: NoneType
-        """
-        async with cls.lock:
-            cls.TESTRUNNER_VALIDATION_CACHE[test_runner] = timestamp
-
-    @classmethod
-    async def remove(cls, test_runner: str) -> None:
-        """Remove the given test runner from the validation cache.
-
-        :param test_runner: test runner container name
-        :type test_runner: str
-        :return: none
-        :rtype: NoneType
-        """
-        async with cls.lock:
-            if test_runner in cls.TESTRUNNER_VALIDATION_CACHE:
-                del cls.TESTRUNNER_VALIDATION_CACHE[test_runner]
-
-    @classmethod
-    async def is_test_runner_valid(cls, test_runner: str) -> bool:
-        """Determine if the given test runner is valid.
-
-        :param test_runner: test runner container name
-        :type test_runner: str
-        :return: validation result from cache
-        :rtype: bool
-        """
-        timestamp = await cls.get_timestamp(test_runner)
-        if timestamp is None:
-            return False
-        if (timestamp + cls.TESTRUNNER_VALIDATION_WINDOW) > time.time():
-            return True
-        await cls.remove(test_runner)
-        return False
 
 
 class Environment(BaseModel):
@@ -255,7 +179,6 @@ class SuiteValidator:
         :type test_suite_url: str
         :raises ValidationError: If the suite did not validate.
         """
-        span = trace.get_current_span()
         downloaded_suite = await self._download_suite(test_suite_url)
         assert (
             len(downloaded_suite) > 0
@@ -271,20 +194,6 @@ class SuiteValidator:
                         test_runners.add(constraint.value)
             docker = Docker()
             for test_runner in test_runners:
-                for attempt in range(3):
-                    result = await docker.digest(test_runner)
-                    if result:
-                        # only passed validations shall be cached
-                        await TestRunnerValidationCache.set_timestamp(test_runner, time.time())
-                        break
-                    span.add_event(
-                        f"Test runner validation unsuccessful, retrying {3 - attempt} more times"
-                    )
-                    self.logger.warning(
-                        "Test runner %s validation unsuccessful, retrying %d more times",
-                        test_runner,
-                        3 - attempt,
-                    )
-                    await asyncio.sleep(random.randint(1, 3))
-
-                assert result is not None, f"Test runner {test_runner} not found"
+                assert (
+                    await docker.digest(test_runner) is not None
+                ), f"Test runner {test_runner} not found"
