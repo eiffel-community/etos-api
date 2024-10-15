@@ -177,7 +177,7 @@ jobs:
               "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-iut:${{ needs.build_iut.outputs.iutVersion }}"
             },
             "manifests/base/executionspace/deployment.yaml": {
-              "2.spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-executionspace:${{ needs.build_executionspace.outputs.executionSpaceVersion }}"
+              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-executionspace:${{ needs.build_executionspace.outputs.executionSpaceVersion }}"
             }
           }
         branch: main
