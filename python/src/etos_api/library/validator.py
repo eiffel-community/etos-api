@@ -39,7 +39,7 @@ class TestRunnerValidationCache:
     # Cache for lazy testrunner validation. Keys: container names, values: timestamp.
     # Only passed validations are cached.
     TESTRUNNER_VALIDATION_CACHE = {}
-    TESTRUNNER_VALIDATION_WINDOW = 1800  # seconds
+    TESTRUNNER_VALIDATION_WINDOW = 3600 * 24 * 7  # 1 week
 
     lock = asyncio.Lock()
 
