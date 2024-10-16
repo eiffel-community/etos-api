@@ -6,4 +6,4 @@ resources:
   - service.yaml
   - deployment.yaml
   - role.yaml
-  - vars.yaml
+  - configmap.yaml
