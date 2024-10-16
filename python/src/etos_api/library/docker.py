@@ -80,14 +80,16 @@ class Docker:
 
         :param session: Client HTTP session to use for HTTP request.
         :param realm: The realm to authorize against.
-        :type parameters: Parameters to use for the authorization request.
+        :param parameters: Parameters to use for the authorization request.
         :return: Response JSON from authorization request.
         """
         async with session.get(realm, params=parameters) as response:
             response.raise_for_status()
             return await response.json()
 
-    async def authorize(self, session: aiohttp.ClientSession, response: aiohttp.ClientResponse, manifest_url: str) -> str:
+    async def authorize(
+        self, session: aiohttp.ClientSession, response: aiohttp.ClientResponse, manifest_url: str
+    ) -> str:
         """Authorize against container registry.
 
         :param session: Client HTTP session to use for HTTP request.
@@ -112,13 +114,17 @@ class Docker:
             if not isinstance(url, str) or not (
                 url.startswith("http://") or url.startswith("https://")
             ):
-                raise ValueError(f"No realm URL found in www-authenticate header: {response.headers}")
+                raise ValueError(
+                    f"No realm URL found in www-authenticate header: {response.headers}"
+                )
         url = parameters.pop("realm")
         response_json = await self.get_token_from_container_registry(session, url, parameters)
         with self.lock:
             self.tokens[manifest_url] = {
                 "token": response_json.get("token"),
-                "expire": time.time() + response_json.get("expires_in", 0.0) - self.token_expire_modifier,
+                "expire": time.time()
+                + response_json.get("expires_in", 0.0)
+                - self.token_expire_modifier,
             }
         return ""
 
@@ -139,7 +145,6 @@ class Docker:
             key, value = part.split("=")
             parameters[key] = value.strip('"')
         return parameters
-
 
     def tag(self, base: str) -> tuple[str, str]:
         """Figure out tag from a container image name.
