@@ -190,7 +190,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         ),
     )
 
-    testrun_client = TestRun(Kubernetes(), strict=True)
+    testrun_client = TestRun(Kubernetes())
     if not testrun_client.create(testrun_spec):
         raise HTTPException("Failed to create testrun")
 
