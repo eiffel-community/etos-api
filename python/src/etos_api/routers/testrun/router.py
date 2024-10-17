@@ -186,7 +186,6 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                 executionSpace=etos.execution_space_provider,
                 logArea=etos.log_area_provider,
             ),
-            suiteSource=etos.test_suite_url,
             suites=TestRunSpec.from_tercc(test_suite, etos.dataset),
         ),
     )
