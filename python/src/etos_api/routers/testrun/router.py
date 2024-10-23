@@ -82,6 +82,34 @@ async def validate_suite(test_suite: list[dict[str, Any]]) -> None:
         ) from exception
 
 
+def convert_to_rfc1123(value: str) -> str:
+    """Convert string to RFC-1123 accepted string.
+
+    https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-label-names
+
+    Some resource types require their names to follow the DNS label standard as defined in RFC 1123.
+    This means the name must:
+
+        contain at most 63 characters
+        contain only lowercase alphanumeric characters or '-'
+        start with an alphanumeric character
+        end with an alphanumeric character
+
+    This method does not care about the length of the string since ETOS uses generateName for
+    creating Kubernetes resources and that function will truncate the string down to 63-5 and
+    then add 5 random characters.
+    """
+    # Replace all characters that are not alphanumeric (A-Z, a-z, 0-9) with a hyphen
+    result = re.sub(r"[^A-Z\d]", "-", value, flags=re.IGNORECASE)
+    # Remove leading hyphens
+    result = re.sub(r"^-+", "", result)
+    # Remove trailing hyphens
+    result = re.sub(r"-+$", "", result)
+    # Replace multiple consecutive hyphens with a single hyphen
+    result = re.sub(r"-+", "-", result)
+    return result.lower()
+
+
 async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     """Create a testrun for ETOS to execute.
 
@@ -130,11 +158,20 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     span.set_attribute("etos.artifact.identity", identity)
 
     try:
+        # Since the TERCC that we use can have multiple names, it's quite difficult to get a
+        # single name that describes the entire TERCC. However ETOS mostly only gets a single
+        # test suite or gets a suite that has a similar name for all suites in the TERCC and
+        # for this reason we get the name of the first suite and that should be okay.
         name = test_suite[0].get("name")
         # Convert to kubernetes accepted name
-        name = re.sub(r'[^a-zA-Z0-9]+', '-', name).lower()
+        name = convert_to_rfc1123(name)
+        # Truncate and Add a hyphen at the end, if possible since it makes the generated name
+        # easier to read. This truncation does not need to be validated since the generateName we
+        # use when creating a TestRun will truncate the string if necessary.
         if not name.endswith("-"):
-            name = f"{name}-"
+            # 63 is the max length, 5 is the random characters added by generateName and
+            # 1 is to be able to fit a hyphen at the end so we truncate to 57 to fit everything.
+            name = f"{name[:57]}-"
     except (IndexError, TypeError, ValueError):
         name = f"testrun-{testrun_id}-"
         LOGGER.error("Could not get name from test suite, defaulting to %s", name)
@@ -174,9 +211,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                     "ENVIRONMENT_PROVIDER_IMAGE",
                     "registry.nordix.org/eiffel/etos-environment-provider:latest",
                 ),
-                imagePullPolicy=os.getenv(
-                    "ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"
-                ),
+                imagePullPolicy=os.getenv("ENVIRONMENT_PROVIDER_IMAGE_PULL_POLICY", "IfNotPresent"),
             ),
             artifact=artifact_id,
             identity=identity,
@@ -209,10 +244,10 @@ async def _abort(suite_id: str) -> dict:
     response = testrun_client.client.delete(
         type="TestRun",
         namespace=testrun_client.namespace,
-        label_selector=f"etos.eiffel-community.github.io/id={suite_id}"
-    ) # type:ignore
+        label_selector=f"etos.eiffel-community.github.io/id={suite_id}",
+    )  # type:ignore
     if not response.items:
-         raise HTTPException(status_code=404, detail="Suite ID not found.")
+        raise HTTPException(status_code=404, detail="Suite ID not found.")
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
