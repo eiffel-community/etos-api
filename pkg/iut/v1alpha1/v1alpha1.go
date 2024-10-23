@@ -25,7 +25,7 @@ import (
 	"time"
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
-	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -37,20 +37,19 @@ import (
 
 type V1Alpha1Application struct {
 	logger   *logrus.Entry
-	cfg      config.Config
+	cfg      config.IUTConfig
 	database *clientv3.Client
 	wg       *sync.WaitGroup
 }
 
 type V1Alpha1Handler struct {
 	logger   *logrus.Entry
-	cfg      config.Config
+	cfg      config.IUTConfig
 	database *clientv3.Client
 	wg       *sync.WaitGroup
 }
 
-type Dataset struct {
-}
+type Dataset struct{}
 
 // RespondWithJSON writes a JSON response with a status code to the HTTP ResponseWriter.
 func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
@@ -72,7 +71,7 @@ func (a *V1Alpha1Application) Close() {
 }
 
 // New returns a new V1Alpha1Application object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cli *clientv3.Client) application.Application {
+func New(cfg config.IUTConfig, log *logrus.Entry, ctx context.Context, cli *clientv3.Client) application.Application {
 	return &V1Alpha1Application{
 		logger:   log,
 		cfg:      cfg,
