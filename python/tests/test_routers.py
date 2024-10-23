@@ -312,7 +312,7 @@ class TestRouters(TestCase):
         self.assertDictEqual(execution_space, EXECUTION_SPACE_PROVIDER)
 
     @patch("etos_api.library.validator.Docker.digest")
-    @patch("etos_api.library.validator.SuiteValidator._download_suite")
+    @patch("etos_api.routers.etos.router.download_suite")
     def test_start_etos_empty_suite(self, download_suite_mock, digest_mock):
         """Test that POST requests to /etos with an empty suite definition list fails validation
         and does not start ETOS tests.
