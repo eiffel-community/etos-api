@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/eiffel-community/eiffelevents-sdk-go"
-	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/eventrepository"
 	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
 	"github.com/eiffel-community/etos-api/pkg/executionspace/executionspace"
@@ -176,7 +176,7 @@ type state struct {
 }
 
 // getSubSuite gets a sub suite from event repository
-func (s *state) getSubSuite(ctx context.Context, cfg config.Config) (*eiffelevents.TestSuiteStartedV3, error) {
+func (s *state) getSubSuite(ctx context.Context, cfg config.ExecutionSpaceConfig) (*eiffelevents.TestSuiteStartedV3, error) {
 	if s.environment == nil {
 		event, err := eventrepository.EnvironmentDefined(ctx, cfg.EiffelGoerURL(), s.ExecutorSpec.Instructions.Environment["ENVIRONMENT_ID"])
 		if err != nil {
@@ -202,7 +202,7 @@ func (s *state) getSubSuite(ctx context.Context, cfg config.Config) (*eiffeleven
 }
 
 // waitStart waits for a job to start completely
-func (s *state) waitStart(ctx context.Context, cfg config.Config, logger *logrus.Entry, executor executor.Executor) error {
+func (s *state) waitStart(ctx context.Context, cfg config.ExecutionSpaceConfig, logger *logrus.Entry, executor executor.Executor) error {
 	var event *eiffelevents.TestSuiteStartedV3
 	var err error
 	if err = retry.Constant(ctx, 5*time.Second, func(ctx context.Context) error {

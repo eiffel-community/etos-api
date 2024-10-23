@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/database/etcd"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	server "github.com/eiffel-community/etos-api/internal/server"
@@ -37,7 +37,7 @@ import (
 
 // main sets up logging and starts up the webserver.
 func main() {
-	cfg := config.Get()
+	cfg := config.NewIUTConfig()
 	ctx := context.Background()
 
 	var hooks []logrus.Hook

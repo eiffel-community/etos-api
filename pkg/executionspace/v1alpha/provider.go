@@ -28,7 +28,7 @@ import (
 	"sync"
 
 	"github.com/eiffel-community/eiffelevents-sdk-go"
-	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/executionspace/provider"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	httperrors "github.com/eiffel-community/etos-api/pkg/executionspace/errors"
@@ -57,14 +57,14 @@ var (
 
 type ProviderServiceApplication struct {
 	logger   *logrus.Entry
-	cfg      config.Config
+	cfg      config.ExecutionSpaceConfig
 	provider provider.Provider
 	wg       *sync.WaitGroup
 }
 
 type ProviderServiceHandler struct {
 	logger   *logrus.Entry
-	cfg      config.Config
+	cfg      config.ExecutionSpaceConfig
 	provider provider.Provider
 	wg       *sync.WaitGroup
 }
@@ -150,7 +150,7 @@ func (a *ProviderServiceApplication) Close() {
 }
 
 // New returns a new ProviderServiceApplication object/struct
-func New(cfg config.Config, log *logrus.Entry, provider provider.Provider, ctx context.Context) application.Application {
+func New(cfg config.ExecutionSpaceConfig, log *logrus.Entry, provider provider.Provider, ctx context.Context) application.Application {
 	return &ProviderServiceApplication{
 		logger:   log,
 		cfg:      cfg,

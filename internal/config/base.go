@@ -32,8 +32,8 @@ type Config interface {
 	DatabaseURI() string
 }
 
-// cfg implements the Config interface.
-type cfg struct {
+// baseCfg implements the Config interface.
+type baseCfg struct {
 	serviceHost   string
 	servicePort   string
 	stripPrefix   string
@@ -44,9 +44,9 @@ type cfg struct {
 	databasePort  string
 }
 
-// Get creates a config interface based on input parameters or environment variables.
-func Get() Config {
-	var conf cfg
+// load the command line vars for a base configuration.
+func load() Config {
+	var conf baseCfg
 
 	flag.StringVar(&conf.serviceHost, "address", EnvOrDefault("SERVICE_HOST", "127.0.0.1"), "Address to serve API on")
 	flag.StringVar(&conf.servicePort, "port", EnvOrDefault("SERVICE_PORT", "8080"), "Port to serve API on")
@@ -56,18 +56,16 @@ func Get() Config {
 	flag.StringVar(&conf.etosNamespace, "etosnamespace", ReadNamespaceOrEnv("ETOS_NAMESPACE"), "Path, including filename, for the log files to create.")
 	flag.StringVar(&conf.databaseHost, "databasehost", EnvOrDefault("ETOS_ETCD_HOST", "etcd-client"), "Host to the database.")
 	flag.StringVar(&conf.databasePort, "databaseport", EnvOrDefault("ETOS_ETCD_PORT", "2379"), "Port to the database.")
-
-	flag.Parse()
 	return &conf
 }
 
 // ServiceHost returns the host of the service.
-func (c *cfg) ServiceHost() string {
+func (c *baseCfg) ServiceHost() string {
 	return c.serviceHost
 }
 
 // ServicePort returns the port of the service.
-func (c *cfg) ServicePort() string {
+func (c *baseCfg) ServicePort() string {
 	return c.servicePort
 }
 
@@ -77,22 +75,22 @@ func (c *cfg) StripPrefix() string {
 }
 
 // LogLevel returns the log level.
-func (c *cfg) LogLevel() string {
+func (c *baseCfg) LogLevel() string {
 	return c.logLevel
 }
 
 // LogFilePath returns the path to where log files should be stored, including filename.
-func (c *cfg) LogFilePath() string {
+func (c *baseCfg) LogFilePath() string {
 	return c.logFilePath
 }
 
 // ETOSNamespace returns the ETOS namespace.
-func (c *cfg) ETOSNamespace() string {
+func (c *baseCfg) ETOSNamespace() string {
 	return c.etosNamespace
 }
 
 // DatabaseURI returns the URI to the ETOS database.
-func (c *cfg) DatabaseURI() string {
+func (c *baseCfg) DatabaseURI() string {
 	return fmt.Sprintf("%s:%s", c.databaseHost, c.databasePort)
 }
 

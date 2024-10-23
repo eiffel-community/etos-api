@@ -26,7 +26,7 @@ import (
 	"time"
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
-	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
@@ -38,14 +38,14 @@ import (
 
 type V1Alpha1Application struct {
 	logger   *logrus.Entry
-	cfg      config.Config
+	cfg      config.IUTConfig
 	database database.Opener
 	wg       *sync.WaitGroup
 }
 
 type V1Alpha1Handler struct {
 	logger   *logrus.Entry
-	cfg      config.Config
+	cfg      config.IUTConfig
 	database database.Opener
 	wg       *sync.WaitGroup
 }
@@ -72,7 +72,7 @@ func (a *V1Alpha1Application) Close() {
 }
 
 // New returns a new V1Alpha1Application object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context, db database.Opener) application.Application {
+func New(cfg config.IUTConfig, log *logrus.Entry, ctx context.Context, db database.Opener) application.Application {
 	return &V1Alpha1Application{
 		logger:   log,
 		cfg:      cfg,
@@ -142,7 +142,6 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 	defer r.Body.Close()
 	purl, err := packageurl.FromString(startReq.ArtifactIdentity)
-
 	if err != nil {
 		logger.Errorf("Failed to create a purl struct from artifact identity: %s", startReq.ArtifactIdentity)
 		RespondWithError(w, http.StatusBadRequest, err.Error())
@@ -185,7 +184,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 	client := h.database.Open(r.Context(), identifier)
 
 	data, err := io.ReadAll(client)
-
 	if err != nil {
 		logger.Errorf("Failed to look up status request id: %s, %s", identifier, err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
@@ -209,7 +207,6 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 	logger.Debugf("Status response: %s", statusResp)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(response)
-
 }
 
 // Stop deletes the given IUTs from the database and returns an empty response.

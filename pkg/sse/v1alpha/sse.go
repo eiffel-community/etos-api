@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"time"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/sse"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/kubernetes"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/events"
@@ -37,14 +37,14 @@ import (
 
 type SSEApplication struct {
 	logger *logrus.Entry
-	cfg    config.Config
+	cfg    config.SSEConfig
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 type SSEHandler struct {
 	logger *logrus.Entry
-	cfg    config.Config
+	cfg    config.SSEConfig
 	ctx    context.Context
 	kube   *kubernetes.Kubernetes
 }
@@ -55,7 +55,7 @@ func (a *SSEApplication) Close() {
 }
 
 // New returns a new SSEApplication object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.Application {
+func New(cfg config.SSEConfig, log *logrus.Entry, ctx context.Context) application.Application {
 	ctx, cancel := context.WithCancel(ctx)
 	return &SSEApplication{
 		logger: log,

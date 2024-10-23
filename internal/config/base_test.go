@@ -16,9 +16,7 @@
 package config
 
 import (
-	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -29,30 +27,25 @@ func TestGet(t *testing.T) {
 	serverHost := "127.0.0.1"
 	logLevel := "DEBUG"
 	logFilePath := "path/to/a/file"
-	timeoutStr := "1m"
 
-	os.Setenv("SERVICE_HOST", serverHost)
-	os.Setenv("SERVICE_PORT", port)
-	os.Setenv("LOGLEVEL", logLevel)
-	os.Setenv("LOG_FILE_PATH", logFilePath)
-	os.Setenv("REQUEST_TIMEOUT", timeoutStr)
+	t.Setenv("SERVICE_HOST", serverHost)
+	t.Setenv("SERVICE_PORT", port)
+	t.Setenv("LOGLEVEL", logLevel)
+	t.Setenv("LOG_FILE_PATH", logFilePath)
 
-	timeout, _ := time.ParseDuration(timeoutStr)
-
-	conf, ok := Get().(*cfg)
+	conf, ok := load().(*baseCfg)
 	assert.Truef(t, ok, "cfg returned from get is not a config interface")
 	assert.Equal(t, port, conf.servicePort)
 	assert.Equal(t, serverHost, conf.serviceHost)
 	assert.Equal(t, logLevel, conf.logLevel)
 	assert.Equal(t, logFilePath, conf.logFilePath)
-	assert.Equal(t, timeout, conf.timeout)
 }
 
 type getter func() string
 
 // Test that the getters in the Cfg struct return the values from the struct.
 func TestGetters(t *testing.T) {
-	conf := &cfg{
+	conf := &baseCfg{
 		serviceHost: "127.0.0.1",
 		servicePort: "8080",
 		logLevel:    "TRACE",
@@ -60,7 +53,7 @@ func TestGetters(t *testing.T) {
 	}
 	tests := []struct {
 		name     string
-		cfg      *cfg
+		cfg      *baseCfg
 		function getter
 		value    string
 	}{
@@ -74,14 +67,4 @@ func TestGetters(t *testing.T) {
 			assert.Equal(t, testCase.value, testCase.function())
 		})
 	}
-}
-
-// TestTimeoutGetter tests the getter for Timeout. Similar to TestGetters, but since
-// Timeout is not a "func() string" we separate its test.
-func TestTimeoutGetter(t *testing.T) {
-	timeout, _ := time.ParseDuration("1m")
-	conf := &cfg{
-		timeout: timeout,
-	}
-	assert.Equal(t, conf.timeout, conf.Timeout())
 }
