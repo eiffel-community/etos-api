@@ -25,6 +25,7 @@ import (
 
 type ExecutionSpaceConfig interface {
 	Config
+	StripPrefix() string
 	Hostname() string
 	Timeout() time.Duration
 	ExecutionSpaceWaitTimeout() time.Duration
@@ -59,6 +60,7 @@ func NewExecutionSpaceConfig() ExecutionSpaceConfig {
 		logrus.Panic(err)
 	}
 
+	flag.StringVar(&conf.stripPrefix, "stripprefix", EnvOrDefault("STRIP_PREFIX", ""), "Strip prefix")
 	flag.StringVar(&conf.hostname, "hostname", EnvOrDefault("PROVIDER_HOSTNAME", "http://localhost"), "Host to supply to ESR for starting executors")
 	flag.DurationVar(&conf.timeout, "timeout", defaultTimeout, "Maximum timeout for requests to Execution space provider Service.")
 	flag.DurationVar(&conf.executionSpaceWaitTimeout, "executionSpaceWaitTimeout", executionSpaceWaitTimeout, "Timeout duration to wait when trying to checkout execution space(s)")
@@ -70,6 +72,11 @@ func NewExecutionSpaceConfig() ExecutionSpaceConfig {
 	conf.Config = base
 
 	return &conf
+}
+
+// StripPrefix returns a prefix that is supposed to be stripped from URL.
+func (c *executionSpaceCfg) StripPrefix() string {
+	return c.stripPrefix
 }
 
 // Hostname returns the hostname to use for executors.
