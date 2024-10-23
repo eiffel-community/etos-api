@@ -23,7 +23,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/database/etcd"
 	"github.com/eiffel-community/etos-api/internal/executionspace/provider"
 	"github.com/eiffel-community/etos-api/internal/logging"
@@ -39,7 +39,7 @@ import (
 
 // main sets up logging and starts up the webservice.
 func main() {
-	cfg := config.Get()
+	cfg := config.NewExecutionSpaceConfig()
 	ctx := context.Background()
 
 	var hooks []logrus.Hook
@@ -120,7 +120,7 @@ func fileLogging(cfg config.Config) logrus.Hook {
 
 // remoteLogging starts a new rabbitmq publisher if the rabbitmq parameters are set
 // Warning: Must call publisher.Close() on the publisher returned from this function
-func remoteLogging(cfg config.Config) *rabbitmq.Publisher {
+func remoteLogging(cfg config.ExecutionSpaceConfig) *rabbitmq.Publisher {
 	if cfg.RabbitMQHookURL() != "" {
 		if cfg.RabbitMQHookExchangeName() == "" {
 			panic("-rabbitmq_hook_exchange (env:ETOS_RABBITMQ_EXCHANGE) must be set when using -rabbitmq_hook_url (env:ETOS_RABBITMQ_URL)")

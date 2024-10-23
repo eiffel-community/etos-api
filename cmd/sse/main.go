@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/sse"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	"github.com/eiffel-community/etos-api/internal/server"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -37,7 +37,7 @@ import (
 
 // main sets up logging and starts up the sse webserver.
 func main() {
-	cfg := config.Get()
+	cfg := config.NewSSEConfig()
 	ctx := context.Background()
 
 	var hooks []logrus.Hook

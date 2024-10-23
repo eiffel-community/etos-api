@@ -19,7 +19,7 @@ import (
 	"context"
 	"sync"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/executionspace"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
 	"github.com/eiffel-community/etos-api/pkg/executionspace/executionspace"
@@ -28,7 +28,7 @@ import (
 )
 
 type Provider interface {
-	New(database.Opener, config.Config) Provider
+	New(database.Opener, config.ExecutionSpaceConfig) Provider
 	Status(*logrus.Entry, context.Context, uuid.UUID) (*executionspace.ExecutionSpace, error)
 	Checkout(*logrus.Entry, context.Context, ExecutorConfig)
 	Checkin(*logrus.Entry, context.Context, []executionspace.ExecutorSpec) error
@@ -52,7 +52,7 @@ type ExecutorConfig struct {
 // be included into another struct that implements the rest of the interface.
 type providerCore struct {
 	db       database.Opener
-	cfg      config.Config
+	cfg      config.ExecutionSpaceConfig
 	url      string
 	active   *sync.WaitGroup
 	executor executor.Executor

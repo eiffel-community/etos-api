@@ -22,7 +22,7 @@ import (
 	"io"
 	"time"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/base"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
