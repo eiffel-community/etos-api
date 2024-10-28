@@ -38,6 +38,7 @@ class StartEtosRequest(EtosRequest):
 
     artifact_identity: Optional[str]
     artifact_id: Optional[UUID] = Field(default=None, validate_default=True)
+    parent_activity: Optional[UUID] = None
     test_suite_url: str
     dataset: Optional[Union[dict, list]] = {}
     execution_space_provider: Optional[str] = os.getenv(

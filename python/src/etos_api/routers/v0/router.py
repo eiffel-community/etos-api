@@ -136,7 +136,10 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
     span.set_attribute("etos.artifact.id", artifact_id)
     span.set_attribute("etos.artifact.identity", identity)
 
-    links = {"CAUSE": artifact_id}
+    if etos.parent_activity is not None:
+        links = {"CAUSE": [artifact_id, etos.parent_activity]}
+    else:
+        links = {"CAUSE": artifact_id}
     data = {
         "selectionStrategy": {"tracker": "Suite Builder", "id": str(uuid4())},
         "batchesUri": etos.test_suite_url,
