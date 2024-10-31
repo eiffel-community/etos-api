@@ -6,7 +6,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -29,18 +29,15 @@ import (
 	"github.com/eiffel-community/etos-api/internal/logging"
 	"github.com/eiffel-community/etos-api/internal/server"
 	"github.com/eiffel-community/etos-api/pkg/application"
-	v1 "github.com/eiffel-community/etos-api/pkg/sse/v1"
-	v1alpha "github.com/eiffel-community/etos-api/pkg/sse/v1alpha"
-	v2alpha "github.com/eiffel-community/etos-api/pkg/sse/v2alpha"
-	"github.com/julienschmidt/httprouter"
+	v1alpha "github.com/eiffel-community/etos-api/pkg/keys/v1alpha"
 	"github.com/sirupsen/logrus"
 	"github.com/snowzach/rotatefilehook"
 	"go.elastic.co/ecslogrus"
 )
 
-// main sets up logging and starts up the sse webserver.
+// main sets up logging and starts up the key webserver.
 func main() {
-	cfg := config.NewSSEConfig()
+	cfg := config.NewKeyConfig()
 	ctx := context.Background()
 
 	var hooks []logrus.Hook
@@ -58,35 +55,28 @@ func main() {
 	}
 	log := logger.WithFields(logrus.Fields{
 		"hostname":    hostname,
-		"application": "ETOS API SSE Server",
+		"application": "ETOS API Key Server",
 		"version":     vcsRevision(),
 		"name":        "ETOS API",
 	})
 
-	log.Info("Loading SSE routes")
-	v1AlphaSSE := v1alpha.New(cfg, log, ctx)
-	defer v1AlphaSSE.Close()
-	v1SSE := v1.New(cfg, log, ctx)
-	defer v1SSE.Close()
+	log.Info("Loading Key routes")
 
 	pub, err := cfg.PublicKey()
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	var app *httprouter.Router
-	// Only load v2alpha if a public key exists.
-	if pub != nil {
-		authorizer, err := auth.NewAuthorizer(pub, nil)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		v2AlphaSSE := v2alpha.New(ctx, cfg, log, authorizer)
-		defer v2AlphaSSE.Close()
-		app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
-	} else {
-		log.Warning("Public key does not exist, won't enable v2alpha endpoint")
-		app = application.New(v1AlphaSSE, v1SSE)
+	priv, err := cfg.PrivateKey()
+	if err != nil {
+		log.Fatal(err.Error())
 	}
+	authorizer, err := auth.NewAuthorizer(pub, priv)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	v1AlphaKeys := v1alpha.New(ctx, cfg, log, authorizer)
+	defer v1AlphaKeys.Close()
+	app := application.New(v1AlphaKeys)
 
 	srv := server.NewWebService(cfg, log, app)
 
