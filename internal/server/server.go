@@ -39,6 +39,9 @@ type WebService struct {
 
 // NewWebService creates a new Server of the webservice type.
 func NewWebService(cfg config.Config, log *logrus.Entry, handler http.Handler) Server {
+	if cfg.StripPrefix() != "" {
+		handler = http.StripPrefix(cfg.StripPrefix(), handler)
+	}
 	webservice := &WebService{
 		server: &http.Server{
 			Addr:    fmt.Sprintf("%s:%s", cfg.ServiceHost(), cfg.ServicePort()),
@@ -52,7 +55,7 @@ func NewWebService(cfg config.Config, log *logrus.Entry, handler http.Handler) S
 
 // Start a webservice and block until closed or crashed.
 func (s *WebService) Start() error {
-	s.logger.Infof("Starting webservice listening on %s:%s", s.cfg.ServiceHost(), s.cfg.ServicePort())
+	s.logger.Infof("Starting webservice listening on %s:%s%s", s.cfg.ServiceHost(), s.cfg.ServicePort(), s.cfg.StripPrefix())
 	return s.server.ListenAndServe()
 }
 

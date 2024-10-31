@@ -15,33 +15,15 @@
 // limitations under the License.
 package config
 
-import (
-	"flag"
-	"os"
-)
+import "flag"
 
-type SSEConfig interface {
+type KeyConfig interface {
 	Config
-	RabbitMQURI() string
 }
 
-type sseCfg struct {
-	Config
-	rabbitmqURI string
-}
-
-// NewSSEConfig creates a sse config interface based on input parameters or environment variables.
-func NewSSEConfig() SSEConfig {
-	var conf sseCfg
-
-	flag.StringVar(&conf.rabbitmqURI, "rabbitmquri", os.Getenv("ETOS_RABBITMQ_URI"), "URI to the RabbitMQ ")
-	base := load()
-	conf.Config = base
+// NewKeyConcifg creates a key config interface based on input parameters or environment variables.
+func NewKeyConfig() KeyConfig {
+	cfg := load()
 	flag.Parse()
-	return &conf
-}
-
-// RabbitMQURI returns the RabbitMQ URI.
-func (c *sseCfg) RabbitMQURI() string {
-	return c.rabbitmqURI
+	return cfg
 }
