@@ -25,7 +25,7 @@ import (
 	"runtime"
 	"time"
 
-	config "github.com/eiffel-community/etos-api/internal/configs/logarea"
+	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
@@ -40,14 +40,14 @@ const (
 
 type LogAreaApplication struct {
 	logger *logrus.Entry
-	cfg    config.Config
+	cfg    config.LogAreaConfig
 	client *clientv3.Client
 	regex  *regexp.Regexp
 }
 
 type LogAreaHandler struct {
 	logger *logrus.Entry
-	cfg    config.Config
+	cfg    config.LogAreaConfig
 	client *clientv3.Client
 	regex  *regexp.Regexp
 }
@@ -58,7 +58,7 @@ func (a *LogAreaApplication) Close() {
 }
 
 // New returns a new LogAreaApplication object/struct.
-func New(cfg config.Config, log *logrus.Entry) application.Application {
+func New(cfg config.LogAreaConfig, log *logrus.Entry) application.Application {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{cfg.DatabaseURI()},
 		DialTimeout: 5 * time.Second,

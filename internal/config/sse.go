@@ -13,32 +13,35 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package provider
+package config
 
 import (
-	"fmt"
-	"sync"
-
-	"github.com/eiffel-community/etos-api/internal/config"
-	"github.com/eiffel-community/etos-api/internal/database"
-	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
+	"flag"
+	"os"
 )
 
-type Kubernetes struct {
-	providerCore
+type SSEConfig interface {
+	Config
+	RabbitMQURI() string
 }
 
-// New creates a copy of a Kubernetes provider
-func (k Kubernetes) New(db database.Opener, cfg config.ExecutionSpaceConfig) Provider {
-	return &Kubernetes{
-		providerCore{
-			db:  db,
-			cfg: cfg,
-			url: fmt.Sprintf("%s/v1alpha/executor/kubernetes", cfg.Hostname()),
-			executor: executor.Kubernetes(
-				cfg.ETOSNamespace(),
-			),
-			active: &sync.WaitGroup{},
-		},
-	}
+type sseCfg struct {
+	Config
+	rabbitmqURI string
+}
+
+// NewSSEConfig creates a sse config interface based on input parameters or environment variables.
+func NewSSEConfig() SSEConfig {
+	var conf sseCfg
+
+	flag.StringVar(&conf.rabbitmqURI, "rabbitmquri", os.Getenv("ETOS_RABBITMQ_URI"), "URI to the RabbitMQ ")
+	base := load()
+	conf.Config = base
+	flag.Parse()
+	return &conf
+}
+
+// RabbitMQURI returns the RabbitMQ URI.
+func (c *sseCfg) RabbitMQURI() string {
+	return c.rabbitmqURI
 }

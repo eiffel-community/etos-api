@@ -13,32 +13,24 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package provider
+package stream
 
 import (
-	"fmt"
-	"sync"
+	"context"
 
-	"github.com/eiffel-community/etos-api/internal/config"
-	"github.com/eiffel-community/etos-api/internal/database"
-	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
+	"github.com/sirupsen/logrus"
 )
 
-type Kubernetes struct {
-	providerCore
+type Streamer interface {
+	NewStream(context.Context, *logrus.Entry, string) (Stream, error)
+	CreateStream(context.Context, *logrus.Entry, string) error
+	Close()
 }
 
-// New creates a copy of a Kubernetes provider
-func (k Kubernetes) New(db database.Opener, cfg config.ExecutionSpaceConfig) Provider {
-	return &Kubernetes{
-		providerCore{
-			db:  db,
-			cfg: cfg,
-			url: fmt.Sprintf("%s/v1alpha/executor/kubernetes", cfg.Hostname()),
-			executor: executor.Kubernetes(
-				cfg.ETOSNamespace(),
-			),
-			active: &sync.WaitGroup{},
-		},
-	}
+type Stream interface {
+	WithChannel(chan<- []byte) Stream
+	WithOffset(int) Stream
+	WithFilter([]string) Stream
+	Consume(context.Context) (<-chan error, error)
+	Close()
 }
