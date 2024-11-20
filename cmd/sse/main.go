@@ -28,11 +28,13 @@ import (
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	"github.com/eiffel-community/etos-api/internal/server"
+	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	v1 "github.com/eiffel-community/etos-api/pkg/sse/v1"
 	v1alpha "github.com/eiffel-community/etos-api/pkg/sse/v1alpha"
 	v2alpha "github.com/eiffel-community/etos-api/pkg/sse/v2alpha"
 	"github.com/julienschmidt/httprouter"
+	rabbitMQStream "github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 	"github.com/sirupsen/logrus"
 	"github.com/snowzach/rotatefilehook"
 	"go.elastic.co/ecslogrus"
@@ -80,7 +82,19 @@ func main() {
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		v2AlphaSSE := v2alpha.New(ctx, cfg, log, authorizer)
+
+		var streamer stream.Streamer
+		if cfg.RabbitMQURI() != "" {
+			log.Info("Starting up a RabbitMQStreamer")
+			streamer, err = stream.NewRabbitMQStreamer(*rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log)
+		} else {
+			log.Warning("RabbitMQURI is not set, defaulting to FileStreamer")
+			streamer, err = stream.NewFileStreamer(100*time.Millisecond, log)
+		}
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		v2AlphaSSE := v2alpha.New(ctx, cfg, log, streamer, authorizer)
 		defer v2AlphaSSE.Close()
 		app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
 	} else {
