@@ -20,7 +20,9 @@ from uuid import uuid4
 
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
-from fastapi import APIRouter, HTTPException
+from etos_lib.kubernetes import Kubernetes
+from fastapi import FastAPI, HTTPException
+from starlette.responses import Response
 from kubernetes import client
 from opentelemetry import trace
 from opentelemetry.trace import Span
@@ -29,12 +31,16 @@ import requests
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
 from etos_api.library.validator import SuiteValidator
-from etos_api.routers.lib.kubernetes import namespace
 
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
 from .utilities import wait_for_artifact_created
 
-ROUTER = APIRouter()
+ETOSv0 = FastAPI(
+    title="ETOS",
+    version="v0",
+    summary="API endpoints for ETOS v0 - I.e. the version before versions",
+    root_path_in_servers=False,
+)
 TRACER = trace.get_tracer("etos_api.routers.etos.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
@@ -164,10 +170,10 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
 
 
 async def _abort(suite_id: str) -> dict:
-    ns = namespace()
+    kubernetes = Kubernetes()
 
     batch_api = client.BatchV1Api()
-    jobs = batch_api.list_namespaced_job(namespace=ns)
+    jobs = batch_api.list_namespaced_job(namespace=kubernetes.namespace)
 
     delete_options = client.V1DeleteOptions(
         propagation_policy="Background"  # asynchronous cascading deletion
@@ -179,7 +185,7 @@ async def _abort(suite_id: str) -> dict:
             and job.metadata.labels.get("id") == suite_id
         ):
             batch_api.delete_namespaced_job(
-                name=job.metadata.name, namespace=ns, body=delete_options
+                name=job.metadata.name, namespace=kubernetes.namespace, body=delete_options
             )
             LOGGER.info("Deleted suite-runner job: %s", job.metadata.name)
             break
@@ -189,7 +195,17 @@ async def _abort(suite_id: str) -> dict:
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
-@ROUTER.post("/etos", tags=["etos"], response_model=StartEtosResponse)
+@ETOSv0.get("/etos/ping", tags=["etos"], status_code=204)
+async def ping():
+    """Ping the ETOS service in order to check if it is up and running.
+
+    :return: HTTP 204 response.
+    :rtype: :obj:`starlette.responses.Response`
+    """
+    return Response(status_code=204)
+
+
+@ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
 async def start_etos(etos: StartEtosRequest):
     """Start ETOS execution on post.
 
@@ -202,7 +218,7 @@ async def start_etos(etos: StartEtosRequest):
         return await _start(etos, span)
 
 
-@ROUTER.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
+@ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
 async def abort_etos(suite_id: str):
     """Abort ETOS execution on delete.
 

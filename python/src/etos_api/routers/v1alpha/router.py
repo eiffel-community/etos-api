@@ -32,17 +32,22 @@ from etos_lib.kubernetes.schemas.testrun import (
     TestRunner,
 )
 from etos_lib.kubernetes import TestRun, Environment, Kubernetes
-from fastapi import APIRouter, HTTPException
+from fastapi import FastAPI, HTTPException
+from starlette.responses import Response
 from opentelemetry import trace
 from opentelemetry.trace import Span
 
 from etos_api.library.validator import SuiteValidator
-from etos_api.routers.lib.kubernetes import namespace
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .utilities import wait_for_artifact_created
 
-ROUTER = APIRouter()
+ETOSv1Alpha = FastAPI(
+    title="ETOS",
+    version="v1alpha",
+    summary="API endpoints for ETOS v1 Alpha",
+    root_path_in_servers=False,
+)
 TRACER = trace.get_tracer("etos_api.routers.testrun.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
@@ -181,10 +186,11 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         success=os.getenv("TESTRUN_SUCCESS_RETENTION"),
     )
 
+    kubernetes = Kubernetes()
     testrun_spec = TestRunSchema(
         metadata=Metadata(
             generateName=name,
-            namespace=namespace(),
+            namespace=kubernetes.namespace,
             labels={
                 "etos.eiffel-community.github.io/id": testrun_id,
                 "etos.eiffel-community.github.io/cluster": os.getenv("ETOS_CLUSTER", "Unknown"),
@@ -225,7 +231,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         ),
     )
 
-    testrun_client = TestRun(Kubernetes())
+    testrun_client = TestRun(kubernetes)
     if not testrun_client.create(testrun_spec):
         raise HTTPException("Failed to create testrun")
 
@@ -251,7 +257,13 @@ async def _abort(suite_id: str) -> dict:
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
-@ROUTER.post("/v1alpha/testrun", tags=["etos", "testrun"], response_model=StartTestrunResponse)
+@ETOSv1Alpha.get("/ping", tags=["etos"], status_code=204)
+async def health_check():
+    """Check the status of the API and verify the client version."""
+    return Response(status_code=204)
+
+
+@ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
 async def start_testrun(etos: StartTestrunRequest):
     """Start ETOS testrun on post.
 
@@ -264,7 +276,7 @@ async def start_testrun(etos: StartTestrunRequest):
         return await _create_testrun(etos, span)
 
 
-@ROUTER.delete("/v1alpha/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
+@ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
 async def abort_testrun(suite_id: str):
     """Abort ETOS testrun on delete.
 
@@ -277,7 +289,7 @@ async def abort_testrun(suite_id: str):
         return await _abort(suite_id)
 
 
-@ROUTER.get("/v1alpha/testrun/{sub_suite_id}", tags=["etos"])
+@ETOSv1Alpha.get("/testrun/{sub_suite_id}", tags=["etos"])
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
 

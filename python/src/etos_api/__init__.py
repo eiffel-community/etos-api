@@ -55,7 +55,7 @@ if os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"):
     trace.set_tracer_provider(PROVIDER)
 
     FastAPIInstrumentor().instrument_app(
-        APP, tracer_provider=PROVIDER, excluded_urls="selftest/.*,logs/.*"
+        APP, tracer_provider=PROVIDER, excluded_urls=".*/etos/ping"
     )
 
 RegisterProviders()

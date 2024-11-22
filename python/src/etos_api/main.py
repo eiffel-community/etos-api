@@ -15,43 +15,28 @@
 # limitations under the License.
 """ETOS API."""
 import logging
-
 from fastapi import FastAPI
-
 from starlette.responses import RedirectResponse
+from etos_api.routers.v0 import ETOSv0
+from etos_api.routers.v1alpha import ETOSv1Alpha
 
-from etos_api import routers
-
-# This allows the path to start either at '/api' or '/'.
-APP = FastAPI(root_path="/api")
 LOGGER = logging.getLogger(__name__)
+DEFAULT_VERSION = ETOSv0
+
+APP = FastAPI()
+APP.mount("/api/v1alpha", ETOSv1Alpha, "ETOS V1 Alpha")
+APP.mount("/api/v0", ETOSv0, "ETOS V0")
+APP.mount("/api", DEFAULT_VERSION, "ETOS V0")
 
 
-@APP.post("/")
-async def redirect_post_to_root():
-    """Redirect post requests to root to the start ETOS endpoint.
+APP.get("/api/selftest/ping")
+async def ping():
+    """Ping the ETOS service in order to check if it is up and running.
 
-    :return: Redirect to etos.
-    :rtype: :obj:`starlette.responses.RedirectResponse`
+    This is deprecated in favor of `/api/etos/ping`.
+
+    :return: HTTP 204 response.
+    :rtype: :obj:`starlette.responses.Response`
     """
-    LOGGER.debug("Redirecting post requests to the root endpoint to '/etos'")
-    # DEPRECATED. Exists only for backwards compatibility.
-    return RedirectResponse(url="/etos", status_code=308)  # 308 = Permanent Redirect
-
-
-@APP.head("/")
-async def redirect_head_to_root():
-    """Redirect head requests to root to the selftest/ping endpoint.
-
-    :return: Redirect to selftest/ping.
-    :rtype: :obj:`starlette.responses.RedirectResponse`
-    """
-    LOGGER.debug("Redirecting head requests to the root endpoint to '/sefltest/ping'")
-    # DEPRECATED. Exists only for backwards compatibility.
-    return RedirectResponse(url="/selftest/ping", status_code=308)  # 308 = Permanent Redirect
-
-
-APP.include_router(routers.etos.ROUTER)
-APP.include_router(routers.testrun.ROUTER)
-APP.include_router(routers.selftest.ROUTER)
-APP.include_router(routers.logs.ROUTER)
+    LOGGER.warning("DEPRECATED request to selftest/ping received!")
+    return RedirectResponse("/api/etos/ping")

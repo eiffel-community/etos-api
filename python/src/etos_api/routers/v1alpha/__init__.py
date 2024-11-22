@@ -13,4 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Generic helpers for all submodules."""
+"""ETOS API testrun module."""
+from .router import ETOSv1Alpha
+from . import schemas
