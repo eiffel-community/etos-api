@@ -36,7 +36,13 @@ from opentelemetry.trace import Span
 
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
-from .utilities import wait_for_artifact_created, download_suite, validate_suite, convert_to_rfc1123, recipes_from_tests
+from .utilities import (
+    wait_for_artifact_created,
+    download_suite,
+    validate_suite,
+    convert_to_rfc1123,
+    recipes_from_tests,
+)
 
 ETOSv1Alpha = FastAPI(
     title="ETOS",

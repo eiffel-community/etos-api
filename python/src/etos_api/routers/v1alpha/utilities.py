@@ -17,10 +17,10 @@
 import re
 import logging
 import asyncio
-import requests
 import time
 from typing import Any
 
+import requests
 from fastapi import HTTPException
 from opentelemetry import trace
 from etos_api.library.graphql import GraphqlQueryHandler

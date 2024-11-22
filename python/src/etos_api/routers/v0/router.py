@@ -207,5 +207,3 @@ async def _abort(suite_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Suite ID not found.")
 
     return {"message": f"Abort triggered for suite id: {suite_id}."}
-
-
