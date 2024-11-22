@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime"
 	"sync"
@@ -185,9 +186,7 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 	id, err := uuid.Parse(r.URL.Query().Get("id"))
 	client := h.database.Open(r.Context(), identifier)
 
-	data := make([]byte, 4096)
-	byteCount, err := client.Read(data)
-	data = data[:byteCount]
+	data, err := io.ReadAll(client)
 
 	if err != nil {
 		logger.Errorf("Failed to look up status request id: %s, %s", identifier, err.Error())
@@ -230,7 +229,7 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 	client := h.database.Open(r.Context(), identifier)
-	_, err = client.Write(nil)
+	err = client.Delete()
 	if err != nil {
 		logger.Errorf("Etcd delete failed: %s", err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
