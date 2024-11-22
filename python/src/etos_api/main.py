@@ -14,29 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API."""
-import logging
 from fastapi import FastAPI
-from starlette.responses import RedirectResponse
 from etos_api.routers.v0 import ETOSv0
 from etos_api.routers.v1alpha import ETOSv1Alpha
 
-LOGGER = logging.getLogger(__name__)
 DEFAULT_VERSION = ETOSv0
 
 APP = FastAPI()
 APP.mount("/api/v1alpha", ETOSv1Alpha, "ETOS V1 Alpha")
 APP.mount("/api/v0", ETOSv0, "ETOS V0")
 APP.mount("/api", DEFAULT_VERSION, "ETOS V0")
-
-
-APP.get("/api/selftest/ping")
-async def ping():
-    """Ping the ETOS service in order to check if it is up and running.
-
-    This is deprecated in favor of `/api/etos/ping`.
-
-    :return: HTTP 204 response.
-    :rtype: :obj:`starlette.responses.Response`
-    """
-    LOGGER.warning("DEPRECATED request to selftest/ping received!")
-    return RedirectResponse("/api/etos/ping")

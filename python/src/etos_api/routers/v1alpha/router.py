@@ -16,11 +16,8 @@
 """ETOS testrun router."""
 import logging
 import os
-import re
 from uuid import uuid4
-from typing import Any
 
-import requests
 from etos_lib import ETOS
 from etos_lib.kubernetes.schemas.testrun import (
     TestRun as TestRunSchema,
@@ -37,10 +34,9 @@ from starlette.responses import Response
 from opentelemetry import trace
 from opentelemetry.trace import Span
 
-from etos_api.library.validator import SuiteValidator
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
-from .utilities import wait_for_artifact_created
+from .utilities import wait_for_artifact_created, download_suite, validate_suite, convert_to_rfc1123, recipes_from_tests
 
 ETOSv1Alpha = FastAPI(
     title="ETOS",
@@ -53,66 +49,53 @@ LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
-async def download_suite(test_suite_url):
-    """Attempt to download suite.
+@ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
+async def start_testrun(etos: StartTestrunRequest):
+    """Start ETOS testrun on post.
 
-    :param test_suite_url: URL to test suite to download.
-    :type test_suite_url: str
-    :return: Downloaded test suite as JSON.
-    :rtype: list
+    :param etos: ETOS pydantic model.
+    :type etos: :obj:`etos_api.routers.etos.schemas.StartTestrunRequest`
+    :return: JSON dictionary with response.
+    :rtype: dict
     """
-    try:
-        suite = requests.get(test_suite_url, timeout=60)
-        suite.raise_for_status()
-    except Exception as exception:  # pylint:disable=broad-except
-        raise AssertionError(f"Unable to download suite from {test_suite_url}") from exception
-    return suite.json()
+    with TRACER.start_as_current_span("start-etos") as span:
+        return await _create_testrun(etos, span)
 
 
-async def validate_suite(test_suite: list[dict[str, Any]]) -> None:
-    """Validate the ETOS test suite through the SuiteValidator.
+@ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
+async def abort_testrun(suite_id: str):
+    """Abort ETOS testrun on delete.
 
-    :param test_suite_url: The URL to the test suite to validate.
+    :param suite_id: ETOS suite id
+    :type suite_id: str
+    :return: JSON dictionary with response.
+    :rtype: dict
     """
-    span = trace.get_current_span()
-
-    try:
-        await SuiteValidator().validate(test_suite)
-    except AssertionError as exception:
-        LOGGER.error("Test suite validation failed!")
-        LOGGER.error(exception)
-        span.add_event("Test suite validation failed")
-        raise HTTPException(
-            status_code=400, detail=f"Test suite validation failed. {exception}"
-        ) from exception
+    with TRACER.start_as_current_span("abort-etos"):
+        return await _abort(suite_id)
 
 
-def convert_to_rfc1123(value: str) -> str:
-    """Convert string to RFC-1123 accepted string.
+@ETOSv1Alpha.get("/testrun/{sub_suite_id}", tags=["etos"])
+async def get_subsuite(sub_suite_id: str) -> dict:
+    """Get sub suite returns the sub suite definition for the ETOS test runner.
 
-    https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-label-names
-
-    Some resource types require their names to follow the DNS label standard as defined in RFC 1123.
-    This means the name must:
-
-        contain at most 63 characters
-        contain only lowercase alphanumeric characters or '-'
-        start with an alphanumeric character
-        end with an alphanumeric character
-
-    This method does not care about the length of the string since ETOS uses generateName for
-    creating Kubernetes resources and that function will truncate the string down to 63-5 and
-    then add 5 random characters.
+    :param sub_suite_id: The name of the Environment kubernetes resource.
+    :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
-    # Replace all characters that are not alphanumeric (A-Z, a-z, 0-9) with a hyphen
-    result = re.sub(r"[^A-Z\d]", "-", value, flags=re.IGNORECASE)
-    # Remove leading hyphens
-    result = re.sub(r"^-+", "", result)
-    # Remove trailing hyphens
-    result = re.sub(r"-+$", "", result)
-    # Replace multiple consecutive hyphens with a single hyphen
-    result = re.sub(r"-+", "-", result)
-    return result.lower()
+    environment_client = Environment(Kubernetes())
+    environment_resource = environment_client.get(sub_suite_id)
+    if not environment_resource:
+        raise HTTPException(404, "Failed to get environment")
+    environment_spec = environment_resource.to_dict().get("spec", {})
+    recipes = await recipes_from_tests(environment_spec["recipes"])
+    environment_spec["recipes"] = recipes
+    return environment_spec
+
+
+@ETOSv1Alpha.get("/ping", tags=["etos"], status_code=204)
+async def health_check():
+    """Check the status of the API and verify the client version."""
+    return Response(status_code=204)
 
 
 async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
@@ -168,6 +151,8 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         # test suite or gets a suite that has a similar name for all suites in the TERCC and
         # for this reason we get the name of the first suite and that should be okay.
         name = test_suite[0].get("name")
+        if name is None:
+            raise HTTPException(status_code=400, detail="There's no name field in TERCC")
         # Convert to kubernetes accepted name
         name = convert_to_rfc1123(name)
         # Truncate and Add a hyphen at the end, if possible since it makes the generated name
@@ -233,7 +218,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
 
     testrun_client = TestRun(kubernetes)
     if not testrun_client.create(testrun_spec):
-        raise HTTPException("Failed to create testrun")
+        raise HTTPException(status_code=500, detail="Failed to create testrun")
 
     LOGGER.info("ETOS triggered successfully.")
     return {
@@ -255,95 +240,3 @@ async def _abort(suite_id: str) -> dict:
     if not response.items:
         raise HTTPException(status_code=404, detail="Suite ID not found.")
     return {"message": f"Abort triggered for suite id: {suite_id}."}
-
-
-@ETOSv1Alpha.get("/ping", tags=["etos"], status_code=204)
-async def health_check():
-    """Check the status of the API and verify the client version."""
-    return Response(status_code=204)
-
-
-@ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
-async def start_testrun(etos: StartTestrunRequest):
-    """Start ETOS testrun on post.
-
-    :param etos: ETOS pydantic model.
-    :type etos: :obj:`etos_api.routers.etos.schemas.StartTestrunRequest`
-    :return: JSON dictionary with response.
-    :rtype: dict
-    """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _create_testrun(etos, span)
-
-
-@ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
-async def abort_testrun(suite_id: str):
-    """Abort ETOS testrun on delete.
-
-    :param suite_id: ETOS suite id
-    :type suite_id: str
-    :return: JSON dictionary with response.
-    :rtype: dict
-    """
-    with TRACER.start_as_current_span("abort-etos"):
-        return await _abort(suite_id)
-
-
-@ETOSv1Alpha.get("/testrun/{sub_suite_id}", tags=["etos"])
-async def get_subsuite(sub_suite_id: str) -> dict:
-    """Get sub suite returns the sub suite definition for the ETOS test runner.
-
-    :param sub_suite_id: The name of the Environment kubernetes resource.
-    :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
-    """
-    environment_client = Environment(Kubernetes())
-    environment_resource = environment_client.get(sub_suite_id)
-    if not environment_resource:
-        raise HTTPException(404, "Failed to get environment")
-    environment_spec = environment_resource.to_dict().get("spec", {})
-    recipes = await recipes_from_tests(environment_spec["recipes"])
-    environment_spec["recipes"] = recipes
-    return environment_spec
-
-
-async def recipes_from_tests(tests: list[dict]) -> list[dict]:
-    """Load Eiffel TERCC recipes from test.
-
-    :param tests: The tests defined in a Test model.
-    :return: A list of Eiffel TERCC recipes.
-    """
-    recipes: list[dict] = []
-    for test in tests:
-        recipes.append(
-            {
-                "id": test["id"],
-                "testCase": test["testCase"],
-                "constraints": [
-                    {
-                        "key": "ENVIRONMENT",
-                        "value": test["execution"]["environment"],
-                    },
-                    {
-                        "key": "COMMAND",
-                        "value": test["execution"]["command"],
-                    },
-                    {
-                        "key": "EXECUTE",
-                        "value": test["execution"]["execute"],
-                    },
-                    {
-                        "key": "CHECKOUT",
-                        "value": test["execution"]["checkout"],
-                    },
-                    {
-                        "key": "PARAMETERS",
-                        "value": test["execution"]["parameters"],
-                    },
-                    {
-                        "key": "TEST_RUNNER",
-                        "value": test["execution"]["testRunner"],
-                    },
-                ],
-            }
-        )
-    return recipes

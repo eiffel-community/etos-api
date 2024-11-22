@@ -22,18 +22,16 @@ from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
 from fastapi import FastAPI, HTTPException
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 from kubernetes import client
 from opentelemetry import trace
 from opentelemetry.trace import Span
-import requests
 
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
-from etos_api.library.validator import SuiteValidator
 
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
-from .utilities import wait_for_artifact_created
+from .utilities import wait_for_artifact_created, validate_suite
 
 ETOSv0 = FastAPI(
     title="ETOS",
@@ -46,37 +44,52 @@ LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
-async def download_suite(test_suite_url: str) -> dict:
-    """Attempt to download suite.
+@ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
+async def start_etos(etos: StartEtosRequest):
+    """Start ETOS execution on post.
 
-    :param test_suite_url: URL to test suite to download.
-    :return: Downloaded test suite as JSON.
+    :param etos: ETOS pydantic model.
+    :type etos: :obj:`etos_api.routers.etos.schemas.StartEtosRequest`
+    :return: JSON dictionary with response.
+    :rtype: dict
     """
-    try:
-        suite = requests.get(test_suite_url, timeout=60)
-        suite.raise_for_status()
-    except Exception as exception:  # pylint:disable=broad-except
-        raise AssertionError(f"Unable to download suite from {test_suite_url}") from exception
-    return suite.json()
+    with TRACER.start_as_current_span("start-etos") as span:
+        return await _start(etos, span)
 
 
-async def validate_suite(test_suite_url: str) -> None:
-    """Validate the ETOS test suite through the SuiteValidator.
+@ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
+async def abort_etos(suite_id: str):
+    """Abort ETOS execution on delete.
 
-    :param test_suite_url: The URL to the test suite to validate.
+    :param suite_id: ETOS suite id
+    :type suite_id: str
+    :return: JSON dictionary with response.
+    :rtype: dict
     """
-    span = trace.get_current_span()
+    with TRACER.start_as_current_span("abort-etos"):
+        return await _abort(suite_id)
 
-    try:
-        test_suite = await download_suite(test_suite_url)
-        await SuiteValidator().validate(test_suite)
-    except AssertionError as exception:
-        LOGGER.error("Test suite validation failed!")
-        LOGGER.error(exception)
-        span.add_event("Test suite validation failed")
-        raise HTTPException(
-            status_code=400, detail=f"Test suite validation failed. {exception}"
-        ) from exception
+
+@ETOSv0.get("/ping", tags=["etos"], status_code=204)
+async def ping():
+    """Ping the ETOS service in order to check if it is up and running.
+
+    :return: HTTP 204 response.
+    :rtype: :obj:`starlette.responses.Response`
+    """
+    return Response(status_code=204)
+
+
+@ETOSv0.get("/selftest/ping")
+async def oldping():
+    """Ping the ETOS service in order to check if it is up and running.
+
+    This is deprecated in favor of `/api/etos/ping`. Implementing here
+    for backward compatibility. In newer API versions this shall not
+    exist.
+    """
+    LOGGER.warning("DEPRECATED request to selftest/ping received!")
+    return RedirectResponse("/api/ping")
 
 
 async def _start(etos: StartEtosRequest, span: Span) -> dict:
@@ -170,6 +183,7 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
 
 
 async def _abort(suite_id: str) -> dict:
+    """Abort an ETOS test suite execution."""
     kubernetes = Kubernetes()
 
     batch_api = client.BatchV1Api()
@@ -195,37 +209,3 @@ async def _abort(suite_id: str) -> dict:
     return {"message": f"Abort triggered for suite id: {suite_id}."}
 
 
-@ETOSv0.get("/etos/ping", tags=["etos"], status_code=204)
-async def ping():
-    """Ping the ETOS service in order to check if it is up and running.
-
-    :return: HTTP 204 response.
-    :rtype: :obj:`starlette.responses.Response`
-    """
-    return Response(status_code=204)
-
-
-@ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
-async def start_etos(etos: StartEtosRequest):
-    """Start ETOS execution on post.
-
-    :param etos: ETOS pydantic model.
-    :type etos: :obj:`etos_api.routers.etos.schemas.StartEtosRequest`
-    :return: JSON dictionary with response.
-    :rtype: dict
-    """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _start(etos, span)
-
-
-@ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
-async def abort_etos(suite_id: str):
-    """Abort ETOS execution on delete.
-
-    :param suite_id: ETOS suite id
-    :type suite_id: str
-    :return: JSON dictionary with response.
-    :rtype: dict
-    """
-    with TRACER.start_as_current_span("abort-etos"):
-        return await _abort(suite_id)
