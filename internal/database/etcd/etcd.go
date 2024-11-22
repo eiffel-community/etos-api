@@ -59,7 +59,7 @@ func New(cfg config.Config, logger *logrus.Logger, treePrefix string) database.O
 }
 
 // Open returns a copy of an Etcd client with ID and context added
-func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) io.ReadWriter {
+func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) database.DatabaseReadWriter {
 	return &Etcd{
 		client: etcd.client,
 		cfg:    etcd.cfg,
@@ -74,14 +74,6 @@ func (etcd Etcd) Write(p []byte) (int, error) {
 		return 0, errors.New("please create a new etcd client using Open")
 	}
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
-
-	if p == nil {
-		_, err := etcd.client.Delete(etcd.ctx, key)
-		if err != nil {
-			return 0, fmt.Errorf("Failed to delete key %s: %s", key, err.Error())
-		}
-		return 0, nil
-	}
 
 	_, err := etcd.client.Put(etcd.ctx, key, string(p))
 	if err != nil {
@@ -136,4 +128,14 @@ func (etcd *Etcd) Read(p []byte) (n int, err error) {
 	}
 
 	return n, nil
+}
+
+// Delete deletes the current key from the database
+func (etcd Etcd) Delete() error {
+	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
+	_, err := etcd.client.Delete(etcd.ctx, key)
+	if err != nil {
+		return fmt.Errorf("Failed to delete key %s: %s", key, err.Error())
+	}
+	return nil
 }
