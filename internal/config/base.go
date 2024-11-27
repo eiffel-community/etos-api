@@ -70,7 +70,7 @@ func (c *baseCfg) ServicePort() string {
 }
 
 // StripPrefix returns the prefix to strip. Empty string if no prefix.
-func (c *cfg) StripPrefix() string {
+func (c *baseCfg) StripPrefix() string {
 	return c.stripPrefix
 }
 
