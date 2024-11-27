@@ -60,8 +60,6 @@ func main() {
 		"name":        "ETOS API",
 	})
 
-	log.Info("Loading Key routes")
-
 	pub, err := cfg.PublicKey()
 	if err != nil {
 		log.Fatal(err.Error())
@@ -76,8 +74,9 @@ func main() {
 	}
 	v1AlphaKeys := v1alpha.New(ctx, cfg, log, authorizer)
 	defer v1AlphaKeys.Close()
-	app := application.New(v1AlphaKeys)
 
+	log.Info("Loading Key routes")
+	app := application.New(v1AlphaKeys)
 	srv := server.NewWebService(cfg, log, app)
 
 	done := make(chan os.Signal, 1)

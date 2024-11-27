@@ -79,3 +79,8 @@ func (c *cfg) ETOSNamespace() string {
 func (c *cfg) DatabaseURI() string {
 	return "etcd-client:2379"
 }
+
+// PublicKey returns a public key.
+func (c *cfg) PublicKey() ([]byte, error) {
+	return nil, nil
+}
