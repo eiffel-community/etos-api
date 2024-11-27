@@ -15,15 +15,38 @@
 // limitations under the License.
 package config
 
-import "flag"
+import (
+	"flag"
+	"os"
+)
 
 type KeyConfig interface {
 	Config
+	PrivateKey() ([]byte, error)
+}
+
+// keyCfg implements the KeyConfig interface.
+type keyCfg struct {
+	Config
+	privateKeyPath string
 }
 
 // NewKeyConcifg creates a key config interface based on input parameters or environment variables.
 func NewKeyConfig() KeyConfig {
-	cfg := load()
+	var conf keyCfg
+
+	flag.StringVar(&conf.privateKeyPath, "privatekeypath", os.Getenv("PRIVATE_KEY_PATH"), "Path to a private key to use for signing JWTs.")
+	base := load()
 	flag.Parse()
-	return cfg
+	conf.Config = base
+
+	return &conf
+}
+
+// PrivateKey reads a private key from disk and returns the content.
+func (c *keyCfg) PrivateKey() ([]byte, error) {
+	if c.privateKeyPath == "" {
+		return nil, nil
+	}
+	return os.ReadFile(c.privateKeyPath)
 }

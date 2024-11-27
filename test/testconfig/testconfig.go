@@ -55,6 +55,11 @@ func (c *cfg) ServicePort() string {
 	return c.servicePort
 }
 
+// StripPrefix returns the prefix to strip. Empty string if no prefix.
+func (c *cfg) StripPrefix() string {
+	return ""
+}
+
 // LogLevel returns the Log level testconfig parameter
 func (c *cfg) LogLevel() string {
 	return c.logLevel
@@ -73,4 +78,9 @@ func (c *cfg) ETOSNamespace() string {
 // DatabaseURI returns the URI to the ETOS database.
 func (c *cfg) DatabaseURI() string {
 	return "etcd-client:2379"
+}
+
+// PublicKey returns a public key.
+func (c *cfg) PublicKey() ([]byte, error) {
+	return nil, nil
 }
