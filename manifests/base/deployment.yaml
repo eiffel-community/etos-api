@@ -28,9 +28,9 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /selftest/ping
+              path: /api/etos/ping
               port: http
           readinessProbe:
             httpGet:
-              path: /selftest/ping
+              path: /api/etos/ping
               port: http
