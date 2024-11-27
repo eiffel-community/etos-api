@@ -54,8 +54,6 @@ if os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"):
     PROVIDER.add_span_processor(PROCESSOR)
     trace.set_tracer_provider(PROVIDER)
 
-    FastAPIInstrumentor().instrument_app(
-        APP, tracer_provider=PROVIDER, excluded_urls=".*/ping"
-    )
+    FastAPIInstrumentor().instrument_app(APP, tracer_provider=PROVIDER, excluded_urls=".*/ping")
 
 RegisterProviders()
