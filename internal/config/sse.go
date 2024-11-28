@@ -13,32 +13,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package provider
+package config
 
-import (
-	"fmt"
-	"sync"
+import "flag"
 
-	"github.com/eiffel-community/etos-api/internal/config"
-	"github.com/eiffel-community/etos-api/internal/database"
-	"github.com/eiffel-community/etos-api/internal/executionspace/executor"
-)
-
-type Kubernetes struct {
-	providerCore
+type SSEConfig interface {
+	Config
 }
 
-// New creates a copy of a Kubernetes provider
-func (k Kubernetes) New(db database.Opener, cfg config.ExecutionSpaceConfig) Provider {
-	return &Kubernetes{
-		providerCore{
-			db:  db,
-			cfg: cfg,
-			url: fmt.Sprintf("%s/v1alpha/executor/kubernetes", cfg.Hostname()),
-			executor: executor.Kubernetes(
-				cfg.ETOSNamespace(),
-			),
-			active: &sync.WaitGroup{},
-		},
-	}
+// NewSSEConfig creates a sse config interface based on input parameters or environment variables.
+func NewSSEConfig() SSEConfig {
+	cfg := load()
+	flag.Parse()
+	return cfg
 }
