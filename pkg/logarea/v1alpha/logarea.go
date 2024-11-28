@@ -81,8 +81,8 @@ func New(cfg config.Config, log *logrus.Entry) application.Application {
 // LoadRoutes loads all the v1alpha routes.
 func (a LogAreaApplication) LoadRoutes(router *httprouter.Router) {
 	handler := &LogAreaHandler{a.logger, a.cfg, a.client, a.regex}
-	router.GET("/v1alpha/selftest/ping", handler.Selftest)
-	router.GET("/v1alpha/logarea/:identifier", handler.panicRecovery(handler.timeoutHandler(handler.GetFileURLs)))
+	router.GET("/logarea/v1alpha/selftest/ping", handler.Selftest)
+	router.GET("/logarea/v1alpha/logarea/:identifier", handler.panicRecovery(handler.timeoutHandler(handler.GetFileURLs)))
 }
 
 // Selftest is a handler to just return 204.

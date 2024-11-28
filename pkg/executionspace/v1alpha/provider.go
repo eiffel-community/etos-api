@@ -162,12 +162,12 @@ func New(cfg config.Config, log *logrus.Entry, provider provider.Provider, ctx c
 // LoadRoutes loads all the v1alpha1 routes.
 func (a ProviderServiceApplication) LoadRoutes(router *httprouter.Router) {
 	handler := &ProviderServiceHandler{a.logger, a.cfg, a.provider, a.wg}
-	router.GET("/v1alpha/selftest/ping", handler.Selftest)
-	router.POST("/start", handler.panicRecovery(handler.timeoutHandler(handler.Start)))
-	router.GET("/status", handler.panicRecovery(handler.timeoutHandler(handler.Status)))
-	router.POST("/stop", handler.panicRecovery(handler.timeoutHandler(handler.Stop)))
+	router.GET("/executionspace/v1alpha/selftest/ping", handler.Selftest)
+	router.POST("/executionspace/start", handler.panicRecovery(handler.timeoutHandler(handler.Start)))
+	router.GET("/executionspace/status", handler.panicRecovery(handler.timeoutHandler(handler.Status)))
+	router.POST("/executionspace/stop", handler.panicRecovery(handler.timeoutHandler(handler.Stop)))
 
-	router.POST(fmt.Sprintf("/v1alpha/executor/%s", a.provider.Executor().Name()), handler.panicRecovery(handler.timeoutHandler(handler.ExecutorStart)))
+	router.POST(fmt.Sprintf("/executionspace/v1alpha/executor/%s", a.provider.Executor().Name()), handler.panicRecovery(handler.timeoutHandler(handler.ExecutorStart)))
 	a.initTracer()
 }
 

@@ -69,8 +69,8 @@ func New(cfg config.Config, log *logrus.Entry, ctx context.Context) application.
 func (a SSEApplication) LoadRoutes(router *httprouter.Router) {
 	kube := kubernetes.New(a.cfg, a.logger)
 	handler := &SSEHandler{a.logger, a.cfg, a.ctx, kube}
-	router.GET("/v1alpha/selftest/ping", handler.Selftest)
-	router.GET("/v1alpha/logs/:identifier", handler.GetEvents)
+	router.GET("/sse/v1alpha/selftest/ping", handler.Selftest)
+	router.GET("/sse/v1alpha/logs/:identifier", handler.GetEvents)
 }
 
 // Selftest is a handler to just return 204.

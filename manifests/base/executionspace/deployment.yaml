@@ -34,9 +34,9 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /v1alpha/selftest/ping
+              path: /executionspace/v1alpha/selftest/ping
               port: http
           readinessProbe:
             httpGet:
-              path: /v1alpha/selftest/ping
+              path: /executionspace/v1alpha/selftest/ping
               port: http

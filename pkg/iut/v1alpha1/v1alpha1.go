@@ -49,8 +49,7 @@ type V1Alpha1Handler struct {
 	wg       *sync.WaitGroup
 }
 
-type Dataset struct {
-}
+type Dataset struct{}
 
 // RespondWithJSON writes a JSON response with a status code to the HTTP ResponseWriter.
 func RespondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
@@ -84,10 +83,10 @@ func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cli *clientv
 // LoadRoutes loads all the v1alpha1 routes.
 func (a V1Alpha1Application) LoadRoutes(router *httprouter.Router) {
 	handler := &V1Alpha1Handler{a.logger, a.cfg, a.database, a.wg}
-	router.GET("/v1alpha1/selftest/ping", handler.Selftest)
-	router.POST("/start", handler.panicRecovery(handler.timeoutHandler(handler.Start)))
-	router.GET("/status", handler.panicRecovery(handler.timeoutHandler(handler.Status)))
-	router.POST("/stop", handler.panicRecovery(handler.timeoutHandler(handler.Stop)))
+	router.GET("/iut/v1alpha1/selftest/ping", handler.Selftest)
+	router.POST("/iut/start", handler.panicRecovery(handler.timeoutHandler(handler.Start)))
+	router.GET("/iut/status", handler.panicRecovery(handler.timeoutHandler(handler.Status)))
+	router.POST("/iut/stop", handler.panicRecovery(handler.timeoutHandler(handler.Stop)))
 }
 
 // Selftest is a handler to just return 204.
