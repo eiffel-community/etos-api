@@ -6,6 +6,7 @@ resources:
   - ./logarea
   - ./iut
   - ./executionspace
+  - ./ingress.yaml
 
 
 # By generating the configmap it will get a unique name on each apply

@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: etos
+  labels:
+    app.kubernetes.io/name: etos
+    app.kubernetes.io/part-of: etos
+    app.kubernetes.io/component: etos-api
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: etos-api
+                port:
+                  number: 80
+          - path: /sse
+            pathType: Prefix
+            backend:
+              service:
+                name: etos-sse
+                port:
+                  number: 80
+          - path: /logarea
+            pathType: Prefix
+            backend:
+              service:
+                name: etos-logarea
+                port:
+                  number: 80
+          - path: /iut
+            pathType: Prefix
+            backend:
+              service:
+                name: etos-iut
+                port:
+                  number: 80
+          - path: /executionspace
+            pathType: Prefix
+            backend:
+              service:
+                name: etos-executionspace
+                port:
+                  number: 80
