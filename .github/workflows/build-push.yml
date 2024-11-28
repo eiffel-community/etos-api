@@ -167,7 +167,7 @@ jobs:
             "manifests/base/sse/deployment.yaml": {
               "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-sse:${{ needs.build_sse.outputs.sseVersion }}"
             },
-            "manifests/base/deployment.yaml": {
+            "manifests/base/api/deployment.yaml": {
               "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-api:${{ needs.build_api.outputs.apiVersion }}"
             },
             "manifests/base/logarea/deployment.yaml": {
