@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime"
 	"sync"
@@ -26,9 +27,9 @@ import (
 
 	eiffelevents "github.com/eiffel-community/eiffelevents-sdk-go"
 	config "github.com/eiffel-community/etos-api/internal/configs/iut"
+	"github.com/eiffel-community/etos-api/internal/database"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	packageurl "github.com/package-url/packageurl-go"
-	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -38,14 +39,14 @@ import (
 type V1Alpha1Application struct {
 	logger   *logrus.Entry
 	cfg      config.Config
-	database *clientv3.Client
+	database database.Opener
 	wg       *sync.WaitGroup
 }
 
 type V1Alpha1Handler struct {
 	logger   *logrus.Entry
 	cfg      config.Config
-	database *clientv3.Client
+	database database.Opener
 	wg       *sync.WaitGroup
 }
 
@@ -71,11 +72,11 @@ func (a *V1Alpha1Application) Close() {
 }
 
 // New returns a new V1Alpha1Application object/struct
-func New(cfg config.Config, log *logrus.Entry, ctx context.Context, cli *clientv3.Client) application.Application {
+func New(cfg config.Config, log *logrus.Entry, ctx context.Context, db database.Opener) application.Application {
 	return &V1Alpha1Application{
 		logger:   log,
 		cfg:      cfg,
-		database: cli,
+		database: db,
 		wg:       &sync.WaitGroup{},
 	}
 }
@@ -126,6 +127,11 @@ type StopRequest struct {
 
 // Start creates a number of IUTs and stores them in the ETCD database returning a checkout ID.
 func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
+	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+	}
 	checkOutID := uuid.New()
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -133,12 +139,15 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 
 	var startReq StartRequest
 	if err := json.NewDecoder(r.Body).Decode(&startReq); err != nil {
+		logger.Errorf("Failed to decode request body: %s", r.Body)
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	defer r.Body.Close()
 	purl, err := packageurl.FromString(startReq.ArtifactIdentity)
+
 	if err != nil {
+		logger.Errorf("Failed to create a purl struct from artifact identity: %s", startReq.ArtifactIdentity)
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -149,11 +158,14 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 	iuts, err := json.Marshal(purls)
 	if err != nil {
+		logger.Errorf("Failed to marshal purls: %s", purls)
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_, err = h.database.Put(r.Context(), fmt.Sprintf("/iut/%s", checkOutID.String()), string(iuts))
+	client := h.database.Open(r.Context(), identifier)
+	_, err = client.Write([]byte(string(iuts)))
 	if err != nil {
+		logger.Errorf("Failed to write to database: %s", string(iuts))
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -165,20 +177,19 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 
 // Status creates a simple DONE Status response with IUTs.
 func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	identifier := r.Header.Get("X-Etos-Id")
+	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+	}
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
 	id, err := uuid.Parse(r.URL.Query().Get("id"))
+	client := h.database.Open(r.Context(), identifier)
 
-	key := fmt.Sprintf("/iut/%s", id)
-	dbResp, err := h.database.Get(r.Context(), key)
+	data, err := io.ReadAll(client)
+
 	if err != nil {
-		logger.Errorf("Failed to look up status request id: %s", id)
-		RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if len(dbResp.Kvs) == 0 {
-		err = fmt.Errorf("No key found: %s", key)
+		logger.Errorf("Failed to look up status request id: %s, %s", identifier, err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -186,22 +197,28 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 		Id:     id,
 		Status: "DONE",
 	}
-	if err = json.Unmarshal(dbResp.Kvs[0].Value, &statusResp.Iuts); err != nil {
+	if err = json.Unmarshal(data, &statusResp.Iuts); err != nil {
+		logger.Errorf("Failed to unmarshal data: %s", data)
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	response, err := json.Marshal(statusResp)
 	if err != nil {
+		logger.Errorf("Failed to marshal status response: %s", statusResp)
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(response)
+
 }
 
 // Stop deletes the given IUTs from the database and returns an empty response.
 func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	identifier := r.Header.Get("X-Etos-Id")
+	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+	}
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 
 	var stopReq StopRequest
@@ -211,7 +228,8 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_, err := h.database.Delete(r.Context(), fmt.Sprintf("/iut/%s", stopReq.Id))
+	client := h.database.Open(r.Context(), identifier)
+	err = client.Delete()
 	if err != nil {
 		logger.Errorf("Etcd delete failed: %s", err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
