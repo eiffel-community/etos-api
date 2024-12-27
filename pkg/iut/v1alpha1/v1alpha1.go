@@ -228,10 +228,19 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// client := h.database.Open(r.Context(), identifier)
+
 	client := h.database.Open(r.Context(), identifier)
-	err = client.Delete()
+	deleter, canDelete := client.(database.Deleter)
+	if !canDelete {
+		logger.Warning("The database does not support delete. Writing nil.")
+		_, err = client.Write(nil)
+	} else {
+		err = deleter.Delete()
+	}
+
 	if err != nil {
-		logger.Errorf("Etcd delete failed: %s", err.Error())
+		logger.Errorf("Database delete failed: %s", err.Error())
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

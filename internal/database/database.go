@@ -22,9 +22,12 @@ import (
 	"github.com/google/uuid"
 )
 
+type Deleter interface {
+	Delete() error
+}
+
 type DatabaseReadWriter interface {
 	io.ReadWriter
-	Delete() error
 }
 
 // Opener is the common interface for database clients

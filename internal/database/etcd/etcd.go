@@ -32,6 +32,7 @@ import (
 // TODO: refactor the client so that it does not store data it fetched.
 // However, without it implementing the database.Opener interface would be more complex (methods readByte, read).
 type Etcd struct {
+	database.Deleter
 	cfg        config.Config
 	client     *clientv3.Client
 	ID         uuid.UUID
