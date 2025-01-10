@@ -21,6 +21,7 @@ import (
 
 	config "github.com/eiffel-community/etos-api/internal/configs/base"
 	"github.com/sirupsen/logrus"
+	v1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -73,15 +74,24 @@ func (k *Kubernetes) IsFinished(ctx context.Context, identifier string) bool {
 		k.logger.Error(err)
 		return false
 	}
-	jobs, err := client.BatchV1().Jobs(k.namespace).List(
-		ctx,
-		metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("id=%s", identifier),
-		},
-	)
-	if err != nil {
-		k.logger.Error(err)
-		return false
+
+	var jobs v1.JobList
+	// Try different labels for backward compatibility:
+	// label id is v0 legacy, while etos.eiffel-community.github.io/id is v1alpha+
+	for _, label := range []string{"id", "etos.eiffel-community.github.io/id"} {
+		jobs, err := client.BatchV1().Jobs(k.namespace).List(
+			ctx,
+			metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s", label, identifier),
+			},
+		)
+		if err != nil {
+			k.logger.Error(err)
+			return false
+		}
+		if len(jobs.Items) > 0 {
+			break
+		}
 	}
 	if len(jobs.Items) == 0 {
 		// Assume that a job is finished if it does not exist.
@@ -101,14 +111,23 @@ func (k *Kubernetes) LogListenerIP(ctx context.Context, identifier string) (stri
 	if err != nil {
 		return "", err
 	}
-	jobs, err := client.BatchV1().Jobs(k.namespace).List(
-		ctx,
-		metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("id=%s", identifier),
-		},
-	)
-	if err != nil {
-		return "", err
+	var jobs v1.JobList
+	// Try different labels for backward compatibility:
+	// label id is v0 legacy, while etos.eiffel-community.github.io/id is v1alpha+
+	for _, label := range []string{"id", "etos.eiffel-community.github.io/id"} {
+		jobs, err := client.BatchV1().Jobs(k.namespace).List(
+			ctx,
+			metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s", label, identifier),
+			},
+		)
+		if err != nil {
+			k.logger.Error(err)
+			return "", err
+		}
+		if len(jobs.Items) > 0 {
+			break
+		}
 	}
 	if len(jobs.Items) == 0 {
 		return "", fmt.Errorf("could not find esr job with id %s", identifier)
