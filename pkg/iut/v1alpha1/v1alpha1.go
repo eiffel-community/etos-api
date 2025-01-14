@@ -237,6 +237,15 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	stopReqJSON, err := json.Marshal(stopReq)
+	if err != nil {
+		logger.Errorf("Failed to marshal stopReq as JSON: %s", err.Error())
+		RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	logger.Infof("Stop request: %s", stopReqJSON)
+
 	client := h.database.Open(r.Context(), identifier)
 	deleter, canDelete := client.(database.Deleter)
 	if !canDelete {
