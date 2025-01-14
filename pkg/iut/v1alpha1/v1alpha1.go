@@ -121,11 +121,6 @@ type StatusRequest struct {
 	Id uuid.UUID `json:"id"`
 }
 
-type IUT struct {
-	Id uuid.UUID `json:"id"`
-}
-type StopRequest []IUT
-
 // Start creates a number of IUTs and stores them in the ETCD database returning a checkout ID.
 func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier, err := uuid.Parse(r.Header.Get("X-Etos-Id"))
@@ -172,7 +167,7 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 	startResp := StartResponse{Id: checkOutID}
-	logger.Infof("Start response: %s", startResp)
+	logger.Debugf("Start response: %s", startResp)
 	w.WriteHeader(http.StatusOK)
 	response, _ := json.Marshal(startResp)
 	_, _ = w.Write(response)
@@ -211,7 +206,7 @@ func (h V1Alpha1Handler) Status(w http.ResponseWriter, r *http.Request, ps httpr
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	logger.Infof("Status response: %s", statusResp)
+	logger.Debugf("Status response: %s", statusResp)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(response)
 
@@ -224,27 +219,6 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 	}
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
-
-	var stopReq StopRequest
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&stopReq); err != nil {
-		body, _err := io.ReadAll(r.Body)
-		if _err != nil {
-			logger.Errorf("Failed to read request body: %s -> %s", err, _err)
-		} else {
-			logger.Errorf("Bad delete request: %s, request body: '%s'", err.Error(), body)
-		}
-		RespondWithError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	stopReqJSON, err := json.Marshal(stopReq)
-	if err != nil {
-		logger.Errorf("Failed to marshal stopReq as JSON: %s", err.Error())
-		RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	logger.Infof("Stop request: %s", stopReqJSON)
 
 	client := h.database.Open(r.Context(), identifier)
 	deleter, canDelete := client.(database.Deleter)
@@ -260,7 +234,7 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	logger.Infof("Stop request succeeded")
+	logger.Debugf("Stop request succeeded")
 	w.WriteHeader(http.StatusNoContent)
 }
 
