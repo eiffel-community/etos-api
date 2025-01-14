@@ -69,7 +69,7 @@ func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) io.ReadWriter {
 	}
 }
 
-// Write writes data to etcd.
+// Write writes data to etcd
 func (etcd Etcd) Write(p []byte) (int, error) {
 	if etcd.ID == uuid.Nil {
 		return 0, errors.New("please create a new etcd client using Open")
