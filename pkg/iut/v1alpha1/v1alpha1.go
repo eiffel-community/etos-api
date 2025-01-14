@@ -131,6 +131,7 @@ func (h V1Alpha1Handler) Start(w http.ResponseWriter, r *http.Request, ps httpro
 	logger := h.logger.WithField("identifier", identifier).WithContext(r.Context())
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	checkOutID := uuid.New()
 
@@ -228,8 +229,6 @@ func (h V1Alpha1Handler) Stop(w http.ResponseWriter, r *http.Request, ps httprou
 		RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// client := h.database.Open(r.Context(), identifier)
-
 	client := h.database.Open(r.Context(), identifier)
 	deleter, canDelete := client.(database.Deleter)
 	if !canDelete {

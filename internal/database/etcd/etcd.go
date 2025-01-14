@@ -60,7 +60,7 @@ func New(cfg config.Config, logger *logrus.Logger, treePrefix string) database.O
 }
 
 // Open returns a copy of an Etcd client with ID and context added
-func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) database.DatabaseReadWriter {
+func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) io.ReadWriter {
 	return &Etcd{
 		client: etcd.client,
 		cfg:    etcd.cfg,
@@ -69,7 +69,7 @@ func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) database.DatabaseReadWr
 	}
 }
 
-// Write writes data to etcd. If data is nil, the current key will be deleted from the database.
+// Write writes data to etcd.
 func (etcd Etcd) Write(p []byte) (int, error) {
 	if etcd.ID == uuid.Nil {
 		return 0, errors.New("please create a new etcd client using Open")

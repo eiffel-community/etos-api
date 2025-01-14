@@ -26,11 +26,7 @@ type Deleter interface {
 	Delete() error
 }
 
-type DatabaseReadWriter interface {
-	io.ReadWriter
-}
-
 // Opener is the common interface for database clients
 type Opener interface {
-	Open(context.Context, uuid.UUID) DatabaseReadWriter
+	Open(context.Context, uuid.UUID) io.ReadWriter
 }
