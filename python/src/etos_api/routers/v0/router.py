@@ -192,12 +192,23 @@ async def _abort(suite_id: str) -> dict:
     delete_options = client.V1DeleteOptions(
         propagation_policy="Background"  # asynchronous cascading deletion
     )
-
+    # trying different labels for backwards compatibility:
+    # - namespaced labels: ETOS v1alpha+
+    # - app/id: ETOS v0 legacy
+    label_pairs = (
+        ("app.kubernetes.io/name", "etos.eiffel-community.github.io/id"),
+        ("app", "id"),
+    )
     for job in jobs.items:
-        if (
-            job.metadata.labels.get("app") == "suite-runner"
-            and job.metadata.labels.get("id") == suite_id
-        ):
+        job_found = False
+        for app_label, id_label in label_pairs:
+            if (
+                job.metadata.labels.get(app_label) == "suite-runner"
+                and job.metadata.labels.get(id_label) == suite_id
+            ):
+                job_found = True
+                break
+        if job_found:
             batch_api.delete_namespaced_job(
                 name=job.metadata.name, namespace=kubernetes.namespace, body=delete_options
             )
@@ -205,5 +216,4 @@ async def _abort(suite_id: str) -> dict:
             break
     else:
         raise HTTPException(status_code=404, detail="Suite ID not found.")
-
     return {"message": f"Abort triggered for suite id: {suite_id}."}
