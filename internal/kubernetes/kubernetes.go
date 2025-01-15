@@ -67,18 +67,13 @@ func (k *Kubernetes) clientset() (*kubernetes.Clientset, error) {
 	return k.client, nil
 }
 
-// IsFinished checks if an ESR job is finished.
-func (k *Kubernetes) IsFinished(ctx context.Context, identifier string) bool {
-	client, err := k.clientset()
-	if err != nil {
-		k.logger.Error(err)
-		return false
-	}
-
-	var jobs v1.JobList
+// getJobsByIdentifier returns a list of jobs bound to the given testrun identifier.
+func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes.Clientset, identifier string) (*v1.JobList, error) {
 	// Try different labels for backward compatibility:
-	// label id is v0 legacy, while etos.eiffel-community.github.io/id is v1alpha+
-	for _, label := range []string{"id", "etos.eiffel-community.github.io/id"} {
+	// - etos.eiffel-community.github.io/id is v1alpha+
+	// - id is v0 legacy
+	var jobs *v1.JobList
+	for _, label := range []string{"etos.eiffel-community.github.io/id", "id"} {
 		jobs, err := client.BatchV1().Jobs(k.namespace).List(
 			ctx,
 			metav1.ListOptions{
@@ -87,11 +82,26 @@ func (k *Kubernetes) IsFinished(ctx context.Context, identifier string) bool {
 		)
 		if err != nil {
 			k.logger.Error(err)
-			return false
+			return nil, err
 		}
 		if len(jobs.Items) > 0 {
-			break
+			return jobs, nil
 		}
+	}
+	return jobs, nil
+}
+
+// IsFinished checks if an ESR job is finished.
+func (k *Kubernetes) IsFinished(ctx context.Context, identifier string) bool {
+	client, err := k.clientset()
+	if err != nil {
+		k.logger.Error(err)
+		return false
+	}
+	jobs, err := k.getJobsByIdentifier(ctx, client, identifier)
+	if err != nil {
+		k.logger.Error(err)
+		return false
 	}
 	if len(jobs.Items) == 0 {
 		// Assume that a job is finished if it does not exist.
@@ -111,23 +121,10 @@ func (k *Kubernetes) LogListenerIP(ctx context.Context, identifier string) (stri
 	if err != nil {
 		return "", err
 	}
-	var jobs v1.JobList
-	// Try different labels for backward compatibility:
-	// label id is v0 legacy, while etos.eiffel-community.github.io/id is v1alpha+
-	for _, label := range []string{"id", "etos.eiffel-community.github.io/id"} {
-		jobs, err := client.BatchV1().Jobs(k.namespace).List(
-			ctx,
-			metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s", label, identifier),
-			},
-		)
-		if err != nil {
-			k.logger.Error(err)
-			return "", err
-		}
-		if len(jobs.Items) > 0 {
-			break
-		}
+	jobs, err := k.getJobsByIdentifier(ctx, client, identifier)
+	if err != nil {
+		k.logger.Error(err)
+		return "", err
 	}
 	if len(jobs.Items) == 0 {
 		return "", fmt.Errorf("could not find esr job with id %s", identifier)
