@@ -34,7 +34,7 @@ func (k Kubernetes) New(db database.Opener, cfg config.Config) Provider {
 		providerCore{
 			db:  db,
 			cfg: cfg,
-			url: fmt.Sprintf("%s/v1alpha/executor/kubernetes", cfg.Hostname()),
+			url: fmt.Sprintf("%s/executionspace/v1alpha/executor/kubernetes", cfg.Hostname()),
 			executor: executor.Kubernetes(
 				cfg.ETOSNamespace(),
 			),
