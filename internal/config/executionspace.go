@@ -92,7 +92,7 @@ func (c *executionSpaceCfg) RabbitMQHookURL() string {
 	return c.rabbitmqHookURL
 }
 
-// EventRepositoryURL returns the Eiffel event repository used for event lookups
+// EiffelGoerURL returns the Eiffel event repository used for event lookups
 func (c *executionSpaceCfg) EiffelGoerURL() string {
 	return c.eiffelGoerURL
 }
