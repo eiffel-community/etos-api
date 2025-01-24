@@ -4,8 +4,8 @@ export GOBUILD := go build
 export PATH := $(GOBIN):$(PATH)
 
 export RELEASE_VERSION ?= $(shell git describe --always)
-export DOCKER_REGISTRY ?= registry.nordix.org
-export DOCKER_NAMESPACE ?= eiffel
+export DOCKER_REGISTRY ?= ghcr.io
+export DOCKER_NAMESPACE ?= eiffel-community
 export DEPLOY ?= etos-sse
 
 PROGRAMS = sse logarea iut executionspace

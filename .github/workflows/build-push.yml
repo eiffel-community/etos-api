@@ -16,13 +16,17 @@ jobs:
     - name: Build app image
       run: docker build . --tag image
 
-    - name: Log into registry
-      run: echo "${{ secrets.REGISTRYPASSWORD }}" | docker login registry.nordix.org -u ${{ secrets.REGISTRYUSERNAME }} --password-stdin
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Push app image
       id: image
       run: |
-        IMAGE_ID=registry.nordix.org/eiffel/etos-api
+        IMAGE_ID=ghcr.io/eiffel-community/etos-api
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Strip "v" prefix from tag name
@@ -45,13 +49,17 @@ jobs:
     - name: Build app image
       run: docker build . -f deploy/etos-sse/Dockerfile --tag image
 
-    - name: Log into registry
-      run: echo "${{ secrets.REGISTRYPASSWORD }}" | docker login registry.nordix.org -u ${{ secrets.REGISTRYUSERNAME }} --password-stdin
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Push app image
       id: image
       run: |
-        IMAGE_ID=registry.nordix.org/eiffel/etos-sse
+        IMAGE_ID=ghcr.io/eiffel-community/etos-sse
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Strip "v" prefix from tag name
@@ -74,13 +82,17 @@ jobs:
     - name: Build app image
       run: docker build . -f deploy/etos-logarea/Dockerfile --tag image
 
-    - name: Log into registry
-      run: echo "${{ secrets.REGISTRYPASSWORD }}" | docker login registry.nordix.org -u ${{ secrets.REGISTRYUSERNAME }} --password-stdin
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Push app image
       id: image
       run: |
-        IMAGE_ID=registry.nordix.org/eiffel/etos-logarea
+        IMAGE_ID=ghcr.io/eiffel-community/etos-logarea
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Strip "v" prefix from tag name
@@ -103,13 +115,17 @@ jobs:
     - name: Build app image
       run: docker build . -f deploy/etos-iut/Dockerfile --tag image
 
-    - name: Log into registry
-      run: echo "${{ secrets.REGISTRYPASSWORD }}" | docker login registry.nordix.org -u ${{ secrets.REGISTRYUSERNAME }} --password-stdin
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Push app image
       id: image
       run: |
-        IMAGE_ID=registry.nordix.org/eiffel/etos-iut
+        IMAGE_ID=ghcr.io/eiffel-community/etos-iut
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Strip "v" prefix from tag name
@@ -132,13 +148,17 @@ jobs:
     - name: Build app image
       run: docker build . -f deploy/etos-executionspace/Dockerfile --tag image
 
-    - name: Log into registry
-      run: echo "${{ secrets.REGISTRYPASSWORD }}" | docker login registry.nordix.org -u ${{ secrets.REGISTRYUSERNAME }} --password-stdin
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Push app image
       id: image
       run: |
-        IMAGE_ID=registry.nordix.org/eiffel/etos-executionspace
+        IMAGE_ID=ghcr.io/eiffel-community/etos-executionspace
         # Strip git ref prefix from version
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         # Strip "v" prefix from tag name
@@ -165,19 +185,19 @@ jobs:
         changes: |
           {
             "manifests/base/sse/deployment.yaml": {
-              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-sse:${{ needs.build_sse.outputs.sseVersion }}"
+              "spec.template.spec.containers[0].image": "ghcr.io/eiffel-community/etos-sse:${{ needs.build_sse.outputs.sseVersion }}"
             },
             "manifests/base/api/deployment.yaml": {
-              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-api:${{ needs.build_api.outputs.apiVersion }}"
+              "spec.template.spec.containers[0].image": "ghcr.io/eiffel-community/etos-api:${{ needs.build_api.outputs.apiVersion }}"
             },
             "manifests/base/logarea/deployment.yaml": {
-              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-logarea:${{ needs.build_logarea.outputs.logAreaVersion }}"
+              "spec.template.spec.containers[0].image": "ghcr.io/eiffel-community/etos-logarea:${{ needs.build_logarea.outputs.logAreaVersion }}"
             },
             "manifests/base/iut/deployment.yaml": {
-              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-iut:${{ needs.build_iut.outputs.iutVersion }}"
+              "spec.template.spec.containers[0].image": "ghcr.io/eiffel-community/etos-iut:${{ needs.build_iut.outputs.iutVersion }}"
             },
             "manifests/base/executionspace/deployment.yaml": {
-              "spec.template.spec.containers[0].image": "registry.nordix.org/eiffel/etos-executionspace:${{ needs.build_executionspace.outputs.executionSpaceVersion }}"
+              "spec.template.spec.containers[0].image": "ghcr.io/eiffel-community/etos-executionspace:${{ needs.build_executionspace.outputs.executionSpaceVersion }}"
             }
           }
         branch: main

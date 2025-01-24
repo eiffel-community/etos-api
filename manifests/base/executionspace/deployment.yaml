@@ -20,7 +20,7 @@ spec:
       serviceAccountName: etos-executionspace
       containers:
         - name: etos-executionspace
-          image: registry.nordix.org/eiffel/etos-executionspace:a1acf6b2
+          image: ghcr.io/eiffel-community/etos-executionspace:a1acf6b2
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
