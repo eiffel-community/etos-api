@@ -72,7 +72,6 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 	// Try different labels for backward compatibility:
 	// - etos.eiffel-community.github.io/id is v1alpha+
 	// - id is v0 legacy
-	var jobs *v1.JobList
 	for _, label := range []string{"etos.eiffel-community.github.io/id", "id"} {
 		jobs, err := client.BatchV1().Jobs(k.namespace).List(
 			ctx,
@@ -88,7 +87,7 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 			return jobs, nil
 		}
 	}
-	return jobs, nil
+	return &v1.JobList{Items: []v1.Job{}}, nil
 }
 
 // IsFinished checks if an ESR job is finished.
