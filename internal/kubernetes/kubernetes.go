@@ -87,7 +87,7 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 			return jobs, nil
 		}
 	}
-	return &v1.JobList{Items: []v1.Job{}}, nil
+	return &v1.JobList{}, nil
 }
 
 // IsFinished checks if an ESR job is finished.
