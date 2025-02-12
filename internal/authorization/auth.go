@@ -59,19 +59,19 @@ func NewAuthorizer(pub, priv []byte) (*Authorizer, error) {
 }
 
 // NewToken generates a new JWT for an identifier.
-func (a Authorizer) NewToken(identifier string, tokenScope scope.Scope) (string, error) {
+func (a Authorizer) NewToken(identifier string, tokenScope scope.Scope, expire time.Time) (string, error) {
 	if a.signingKey == nil {
 		return "", errors.New("a private key must be provided to the authorizer to create new tokens.")
 	}
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodEdDSA,
 		jwt.MapClaims{
-			"scope": tokenScope.Format(),                     // Custom scope type, similar to oauth2. Describes what a subject can do with this token
-			"sub":   identifier,                              // Subject
-			"aud":   "https://etos",                          // Audience. The service that can be accessed with this token.
-			"iss":   "https://etos",                          // Issuer
-			"iat":   time.Now().Unix(),                       // Issued At
-			"exp":   time.Now().Add(time.Minute * 30).Unix(), // Expiration
+			"scope": tokenScope.Format(), // Custom scope type, similar to oauth2. Describes what a subject can do with this token
+			"sub":   identifier,          // Subject
+			"aud":   "https://etos",      // Audience. The service that can be accessed with this token.
+			"iss":   "https://etos",      // Issuer
+			"iat":   time.Now().Unix(),   // Issued At
+			"exp":   expire.Unix(),       // Expiration
 		})
 	return token.SignedString(a.signingKey)
 }

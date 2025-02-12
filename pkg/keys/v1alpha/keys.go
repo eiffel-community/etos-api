@@ -118,7 +118,7 @@ func (h Handler) CreateNew(w http.ResponseWriter, r *http.Request, ps httprouter
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	token, err := h.authorizer.NewToken(identifier, requestedScope)
+	token, err := h.authorizer.NewToken(identifier, requestedScope, time.Now().Add(30*time.Minute))
 	if err != nil {
 		logger.WithError(err).Warning("failed to generate token")
 		w.WriteHeader(http.StatusInternalServerError)

@@ -39,7 +39,7 @@ func NewFileStreamer(interval time.Duration, logger *logrus.Entry) (Streamer, er
 
 // CreateStream does nothing.
 func (s *FileStreamer) CreateStream(ctx context.Context, logger *logrus.Entry, name string) error {
-	return nil
+	return os.WriteFile(name, nil, 0644)
 }
 
 // NewStream creates a new stream struct to consume from.
