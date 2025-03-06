@@ -82,7 +82,7 @@ async def load(path: ETCDPath) -> Optional[dict]:
     return None
 
 
-async def save_json(path: ETCDPath, data: dict, expire=3600) -> None:
+async def save_json(path: ETCDPath, data: dict, expire=86400) -> None:
     """Save data as json to an ETCD path.
 
     :param path: The path to store data on.
