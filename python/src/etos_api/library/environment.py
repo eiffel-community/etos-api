@@ -60,7 +60,7 @@ async def configure_testrun(configuration: Configuration, expire: int) -> None:
         testrun.join("provider/iut"),
         expire,
     )
-    await save_json(testrun.join("provider/dataset"), configuration.dataset)
+    await save_json(testrun.join("provider/dataset"), configuration.dataset, expire)
 
 
 async def do_configure(path: ETCDPath, provider_id: str, testrun: ETCDPath, expire: int) -> None:
