@@ -152,7 +152,9 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
         log_area_provider=etos.log_area_provider,
     )
     try:
-        await configure_testrun(config, etos_library.debug.default_test_result_timeout)
+        # 10 minutes safety margin for etcd configuration entries
+        etcd_lease_expiration_time = etos_library.debug.default_test_result_timeout + 10 * 60
+        await configure_testrun(config, etcd_lease_expiration_time)
     except AssertionError as exception:
         LOGGER.critical(exception)
         raise HTTPException(
