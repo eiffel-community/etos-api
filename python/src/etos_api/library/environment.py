@@ -33,10 +33,11 @@ class Configuration(BaseModel):
     log_area_provider: str
 
 
-async def configure_testrun(configuration: Configuration) -> None:
+async def configure_testrun(configuration: Configuration, expire: int) -> None:
     """Configure an ETOS testrun with the configuration passed by user.
 
     :param configuration: The configuration to save.
+    :param expire: etcd lease expiration time in seconds
     """
     testrun = ETCDPath(f"/testrun/{configuration.suite_id}")
     providers = ETCDPath("/environment/provider")
@@ -45,30 +46,34 @@ async def configure_testrun(configuration: Configuration) -> None:
         providers.join(f"log-area/{configuration.log_area_provider}"),
         configuration.log_area_provider,
         testrun.join("provider/log-area"),
+        expire,
     )
     await do_configure(
         providers.join(f"execution-space/{configuration.execution_space_provider}"),
         configuration.execution_space_provider,
         testrun.join("provider/execution-space"),
+        expire,
     )
     await do_configure(
         providers.join(f"iut/{configuration.iut_provider}"),
         configuration.iut_provider,
         testrun.join("provider/iut"),
+        expire,
     )
     await save_json(testrun.join("provider/dataset"), configuration.dataset)
 
 
-async def do_configure(path: ETCDPath, provider_id: str, testrun: ETCDPath) -> None:
+async def do_configure(path: ETCDPath, provider_id: str, testrun: ETCDPath, expire: int) -> None:
     """Configure a provider based on provider ID and save it to a testrun.
 
     :param path: Path to load provider from.
     :param provider_id: The ID of the provider to load.
     :param testrun: Where to store the loaded provider.
+    :param expire: etcd lease expiration time in seconds
     """
     if (provider := await load(path)) is None:
         raise AssertionError(f"{provider_id} does not exist")
-    await save_json(testrun, provider)
+    await save_json(testrun, provider, expire)
 
 
 async def load(path: ETCDPath) -> Optional[dict]:
@@ -82,7 +87,7 @@ async def load(path: ETCDPath) -> Optional[dict]:
     return None
 
 
-async def save_json(path: ETCDPath, data: dict, expire=86400) -> None:
+async def save_json(path: ETCDPath, data: dict, expire: int) -> None:
     """Save data as json to an ETCD path.
 
     :param path: The path to store data on.

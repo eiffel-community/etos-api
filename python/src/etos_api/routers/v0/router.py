@@ -152,7 +152,7 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:
         log_area_provider=etos.log_area_provider,
     )
     try:
-        await configure_testrun(config)
+        await configure_testrun(config, etos_library.debug.default_test_result_timeout)
     except AssertionError as exception:
         LOGGER.critical(exception)
         raise HTTPException(
