@@ -139,7 +139,6 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 			// We have no reliable way of getting a specific offset on the SSE stream so
 			// we will need to iterate all events until we reach the last known ID.
 			if counter < lastID {
-				logger.Infof("Skipping event due to lastID=%d and counter=%d", lastID, counter)
 				counter++
 				continue
 			}
