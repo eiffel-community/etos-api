@@ -40,6 +40,10 @@ func (c cfg) RabbitMQURI() string {
 	return ""
 }
 
+func (c cfg) RabbitMQStreamName() string {
+	return "test"
+}
+
 // TestSSECreateStream tests that the CreateStream endpoint works.
 // Does not test the authorization middleware!
 func TestSSECreateStream(t *testing.T) {
