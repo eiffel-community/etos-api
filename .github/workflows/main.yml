@@ -59,6 +59,10 @@ jobs:
         uses: hadolint/hadolint-action@master
         with:
           dockerfile: deploy/etos-sse/Dockerfile
+      - name: Run hadolint for KeyService
+        uses: hadolint/hadolint-action@master
+        with:
+          dockerfile: deploy/etos-keys/Dockerfile
       - name: Run hadolint for LogArea
         uses: hadolint/hadolint-action@master
         with:
@@ -83,6 +87,11 @@ jobs:
         with:
           context: .
           file: ./deploy/etos-sse/Dockerfile
+      - name: Build KeyService image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./deploy/etos-keys/Dockerfile
       - name: Build LogArea image
         uses: docker/build-push-action@v2
         with:

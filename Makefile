@@ -8,7 +8,7 @@ export DOCKER_REGISTRY ?= ghcr.io
 export DOCKER_NAMESPACE ?= eiffel-community
 export DEPLOY ?= etos-sse
 
-PROGRAMS = sse logarea iut executionspace
+PROGRAMS = sse logarea iut executionspace keys
 COMPILEDAEMON = $(GOBIN)/CompileDaemon
 GIT = git
 GOLANGCI_LINT = $(GOBIN)/golangci-lint

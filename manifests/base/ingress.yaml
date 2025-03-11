@@ -24,6 +24,13 @@ spec:
                 name: etos-sse
                 port:
                   number: 80
+          - path: /keys
+            pathType: Prefix
+            backend:
+              service:
+                name: etos-keys
+                port:
+                  number: 80
           - path: /logarea
             pathType: Prefix
             backend:
