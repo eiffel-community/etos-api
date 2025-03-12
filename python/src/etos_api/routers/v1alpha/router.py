@@ -135,7 +135,10 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         LOGGER.warning("Timeout error while waiting for artifact.")
         raise HTTPException(
             status_code=504,
-            detail=f"Timeout waiting for artifact {etos.artifact_identity or etos.artifact_id}, retry in 30s",
+            detail=(
+                f"Timeout waiting for artifact {etos.artifact_identity or etos.artifact_id}, "
+                "retry in 30s"
+            ),
             headers={"Retry-After": "30"},
         ) from error
     except Exception as exception:  # pylint:disable=broad-except
