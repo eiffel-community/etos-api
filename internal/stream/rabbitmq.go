@@ -35,15 +35,16 @@ const IgnoreUnfiltered = false
 type RabbitMQStreamer struct {
 	environment *stream.Environment
 	logger      *logrus.Entry
+	streamName  string
 }
 
 // NewRabbitMQStreamer creates a new RabbitMQ streamer. Only a single connection should be created.
-func NewRabbitMQStreamer(options stream.EnvironmentOptions, logger *logrus.Entry) (Streamer, error) {
+func NewRabbitMQStreamer(options stream.EnvironmentOptions, logger *logrus.Entry, streamName string) (Streamer, error) {
 	env, err := stream.NewEnvironment(&options)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return &RabbitMQStreamer{environment: env, logger: logger}, err
+	return &RabbitMQStreamer{environment: env, logger: logger, streamName: streamName}, err
 }
 
 // CreateStream creates a new RabbitMQ stream.
@@ -52,16 +53,15 @@ func (s *RabbitMQStreamer) CreateStream(ctx context.Context, logger *logrus.Entr
 	// This will create the stream if not already created.
 	return s.environment.DeclareStream(name,
 		&stream.StreamOptions{
-			// TODO: More sane numbers
 			MaxLengthBytes: stream.ByteCapacity{}.GB(2),
-			MaxAge:         time.Second * 10,
+			MaxAge:         time.Hour * 48,
 		},
 	)
 }
 
 // NewStream creates a new stream struct to consume from.
 func (s *RabbitMQStreamer) NewStream(ctx context.Context, logger *logrus.Entry, name string) (Stream, error) {
-	exists, err := s.environment.StreamExists(name)
+	exists, err := s.environment.StreamExists(s.streamName)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (s *RabbitMQStreamer) NewStream(ctx context.Context, logger *logrus.Entry, 
 		SetConsumerName(name).
 		SetCRCCheck(false).
 		SetOffset(stream.OffsetSpecification{}.First())
-	return &RabbitMQStream{ctx: ctx, logger: logger, streamName: name, environment: s.environment, options: options}, nil
+	return &RabbitMQStream{ctx: ctx, logger: logger, streamName: s.streamName, environment: s.environment, options: options}, nil
 }
 
 // Close the RabbitMQ connection.
