@@ -65,7 +65,7 @@ if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
     PROCESSOR = BatchSpanProcessor(EXPORTER)
     PROVIDER.add_span_processor(PROCESSOR)
     trace.set_tracer_provider(PROVIDER)
-    setup_logging("ETOS API", VERSION, OTEL_RESOURCE)
+    setup_logging("ETOS API", VERSION, otel_resource=OTEL_RESOURCE)
 
     FastAPIInstrumentor().instrument_app(APP, tracer_provider=PROVIDER, excluded_urls=".*/ping")
 else:
