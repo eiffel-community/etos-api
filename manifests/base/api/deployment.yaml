@@ -35,5 +35,5 @@ spec:
               path: /api/ping
               port: http
           envFrom:
-            - configMapRef: null
-              name: etos-api
+            - configMapRef:
+                name: etos-api
