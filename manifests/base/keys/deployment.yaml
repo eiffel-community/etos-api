@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: etos-api
+    app.kubernetes.io/part-of: etos
+    app.kubernetes.io/component: keys
+  name: etos-keys
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: etos-api
+      app.kubernetes.io/component: keys
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: etos-api
+        app.kubernetes.io/component: keys
+    spec:
+      serviceAccountName: etos-keys
+      containers:
+        - name: etos-keys
+          image: ghcr.io/eiffel-community/etos-keys:nnnnnnnn
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICE_HOST
+              value: 0.0.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /keys/v1alpha/selftest/ping
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /keys/v1alpha/selftest/ping
+              port: http
