@@ -85,8 +85,14 @@ func main() {
 
 		var streamer stream.Streamer
 		if cfg.RabbitMQURI() != "" {
-			log.Info("Starting up a RabbitMQStreamer")
-			streamer, err = stream.NewRabbitMQStreamer(*rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log)
+			if cfg.RabbitMQStreamName() == "" {
+				log.Fatal("ETOS_RABBITMQ_STREAM_NAME must be set for the SSE server to work.")
+			}
+			log.Infof("Starting up a RabbitMQStreamer with stream name: %s", cfg.RabbitMQStreamName())
+			streamer, err = stream.NewRabbitMQStreamer(*rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log, cfg.RabbitMQStreamName())
+			if err := streamer.CreateStream(ctx, log, cfg.RabbitMQStreamName()); err != nil {
+				log.Fatal(err.Error())
+			}
 		} else {
 			log.Warning("RabbitMQURI is not set, defaulting to FileStreamer")
 			streamer, err = stream.NewFileStreamer(100*time.Millisecond, log)
