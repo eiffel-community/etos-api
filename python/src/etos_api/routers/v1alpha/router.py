@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS testrun router."""
+
 import logging
 import os
 from uuid import uuid4
@@ -130,6 +131,16 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         artifact = await wait_for_artifact_created(
             etos_library, etos.artifact_identity, etos.artifact_id
         )
+    except TimeoutError as error:
+        LOGGER.warning("Timeout error while waiting for artifact.")
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"Timeout waiting for artifact {etos.artifact_identity or etos.artifact_id}, "
+                "retry in 30s"
+            ),
+            headers={"Retry-After": "30"},
+        ) from error
     except Exception as exception:  # pylint:disable=broad-except
         LOGGER.critical(exception)
         raise HTTPException(
