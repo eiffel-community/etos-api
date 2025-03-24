@@ -68,8 +68,8 @@ func New(ctx context.Context, cfg config.KeyConfig, log *logrus.Entry, authorize
 // LoadRoutes loads all the v2alpha routes.
 func (a Application) LoadRoutes(router *httprouter.Router) {
 	handler := &Handler{a.logger, a.cfg, a.ctx, a.authorizer}
-	router.GET("/v1alpha/selftest/ping", handler.Selftest)
-	router.POST("/v1alpha/generate", handler.CreateNew)
+	router.GET("/keys/v1alpha/selftest/ping", handler.Selftest)
+	router.POST("/keys/v1alpha/generate", handler.CreateNew)
 }
 
 // Selftest is a handler to just return 204.
