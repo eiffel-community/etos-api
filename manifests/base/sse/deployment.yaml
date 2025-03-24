@@ -20,7 +20,7 @@ spec:
       serviceAccountName: etos-sse
       containers:
         - name: etos-sse
-          image: ghcr.io/eiffel-community/etos-sse:bc6af96c
+          image: ghcr.io/eiffel-community/etos-sse:76474411
           imagePullPolicy: IfNotPresent
           env:
             - name: SERVICE_HOST
