@@ -209,6 +209,8 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             labels={
                 "etos.eiffel-community.github.io/id": testrun_id,
                 "etos.eiffel-community.github.io/cluster": os.getenv("ETOS_CLUSTER", "Unknown"),
+            },
+            annotations={
                 "etos.eiffel-community.github.io/traceparent": get_current_context(),
             },
         ),
