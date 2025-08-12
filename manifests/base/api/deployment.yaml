@@ -20,7 +20,7 @@ spec:
       serviceAccountName: etos-api
       containers:
         - name: etos-api
-          image: ghcr.io/eiffel-community/etos-api:2f597bab
+          image: ghcr.io/eiffel-community/etos-api:69a0e240
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
