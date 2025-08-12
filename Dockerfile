@@ -8,7 +8,7 @@ FROM python:3.9-slim-bookworm
 ARG TZ
 ENV TZ=$TZ
 
-COPY --from=build /src/python/dist/*.whl /tmp
+COPY --from=build /src/python/dist/*.whl /tmp/
 
 # hadolint ignore=DL3013
 # hadolint ignore=DL3008
