@@ -85,7 +85,7 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, logger *logrus.Entry, ctx 
 	defer close(ch)
 
 	// TODO: Test a streaming approach.
-	tick := time.NewTicker(2 * time.Second)
+	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
 	ping := time.NewTicker(15 * time.Second)
 	defer ping.Stop()
