@@ -40,21 +40,21 @@ type cacheEntry struct {
 type kubernetesCache struct {
 	jobs     sync.Map      // map[string]*cacheEntry for job lists
 	pods     sync.Map      // map[string]*cacheEntry for pod lists
-	cacheTTL time.Duration // Cache validity duration (5 seconds)
+	cacheTTL time.Duration // Cache validity duration
 	// Mutexes to prevent concurrent API calls for the same resource
 	jobsMutex sync.Mutex
 	podsMutex sync.Mutex
 }
 
-// newKubernetesCache creates a new cache with 5 second cache validity
+// newKubernetesCache creates a new cache with configured cache validity
 func newKubernetesCache() *kubernetesCache {
 	return &kubernetesCache{
 		cacheTTL: 5 * time.Second,
 	}
 }
 
-// getAllJobs retrieves all jobs from cache or API, making API calls if data is older than 5 seconds
-func (c *kubernetesCache) getAllJobs(namespace string, fetcher func() (*v1.JobList, error), logger *logrus.Entry) (*v1.JobList, error) {
+// getAllJobs retrieves all jobs from cache or API, making API calls if cached data is stale
+func (c *kubernetesCache) getAllJobs(ctx context.Context, client *kubernetes.Clientset, namespace string, logger *logrus.Entry) (*v1.JobList, error) {
 	// Use namespace as cache key since we're caching all jobs in the namespace
 	key := fmt.Sprintf("all_jobs_%s", namespace)
 
@@ -88,9 +88,9 @@ func (c *kubernetesCache) getAllJobs(namespace string, fetcher func() (*v1.JobLi
 		return jobs, nil
 	}
 
-	// Fetch from API if no cache entry exists or data is older than 5 seconds
+	// Fetch from API if no cache entry exists or cached data is stale
 	logger.Infof("Making Kubernetes API call to fetch all jobs for namespace: %s", namespace)
-	jobs, err := fetcher()
+	jobs, err := client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Errorf("Failed to fetch jobs from Kubernetes API for namespace %s: %v", namespace, err)
 		return nil, err
@@ -106,8 +106,8 @@ func (c *kubernetesCache) getAllJobs(namespace string, fetcher func() (*v1.JobLi
 	return jobs, nil
 }
 
-// getAllPods retrieves all pods from cache or API, making API calls if data is older than 5 seconds
-func (c *kubernetesCache) getAllPods(namespace string, fetcher func() (*corev1.PodList, error), logger *logrus.Entry) (*corev1.PodList, error) {
+// getAllPods retrieves all pods from cache or API, making API calls if cached data is stale
+func (c *kubernetesCache) getAllPods(ctx context.Context, client *kubernetes.Clientset, namespace string, logger *logrus.Entry) (*corev1.PodList, error) {
 	// Use namespace as cache key since we're caching all pods in the namespace
 	key := fmt.Sprintf("all_pods_%s", namespace)
 
@@ -141,9 +141,9 @@ func (c *kubernetesCache) getAllPods(namespace string, fetcher func() (*corev1.P
 		return pods, nil
 	}
 
-	// Fetch from API if no cache entry exists or data is older than 5 seconds
+	// Fetch from API if no cache entry exists or cached data is stale
 	logger.Infof("Making Kubernetes API call to fetch all pods for namespace: %s", namespace)
-	pods, err := fetcher()
+	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Errorf("Failed to fetch pods from Kubernetes API for namespace %s: %v", namespace, err)
 		return nil, err
@@ -230,10 +230,7 @@ func (k *Kubernetes) clientset() (*kubernetes.Clientset, error) {
 // getJobsByIdentifier returns a list of jobs bound to the given testrun identifier.
 func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes.Clientset, identifier string) (*v1.JobList, error) {
 	// Get all jobs from cache or API
-	allJobs, err := k.cache.getAllJobs(k.namespace, func() (*v1.JobList, error) {
-		// Fetch all jobs in the namespace without label selector
-		return client.BatchV1().Jobs(k.namespace).List(ctx, metav1.ListOptions{})
-	}, k.logger)
+	allJobs, err := k.cache.getAllJobs(ctx, client, k.namespace, k.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -306,10 +303,7 @@ func (k *Kubernetes) LogListenerIP(ctx context.Context, identifier string) (stri
 	job := jobs.Items[0]
 
 	// Get all pods from cache or API
-	allPods, err := k.cache.getAllPods(k.namespace, func() (*corev1.PodList, error) {
-		// Fetch all pods in the namespace without label selector
-		return client.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{})
-	}, k.logger)
+	allPods, err := k.cache.getAllPods(ctx, client, k.namespace, k.logger)
 	if err != nil {
 		return "", err
 	}
