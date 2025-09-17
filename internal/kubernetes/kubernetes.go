@@ -18,6 +18,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
@@ -27,57 +28,68 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 )
 
-// extractCacheEntryKey extracts a cached object from the cache by key
-func extractCacheEntryKey(obj interface{}) (string, error) {
-	if entry, ok := obj.(cacheEntry); ok {
-		return entry.key, nil
-	}
-	return "", fmt.Errorf("invalid cache object type")
-}
-
-// cacheEntry contains the cached data with its key
+// Cache entry with TTL
 type cacheEntry struct {
-	key  string
-	data interface{}
+	data      interface{}
+	timestamp time.Time
 }
 
-// kubernetesCache wraps TTL stores for different resource types
+// Cache for Kubernetes API responses with TTL
 type kubernetesCache struct {
-	jobsStore cache.Store
-	podsStore cache.Store
-	cacheTTL  time.Duration
+	jobs     sync.Map      // map[string]*cacheEntry for job lists
+	pods     sync.Map      // map[string]*cacheEntry for pod lists
+	cacheTTL time.Duration // Cache validity duration
+	// Mutexes to prevent concurrent API calls for the same resource
+	jobsMutex sync.Mutex
+	podsMutex sync.Mutex
 }
 
-// newKubernetesCache creates a new cache with TTL stores
+// newKubernetesCache creates a new cache with configured cache validity
 func newKubernetesCache() *kubernetesCache {
-	ttl := 5 * time.Second
 	return &kubernetesCache{
-		jobsStore: cache.NewTTLStore(extractCacheEntryKey, ttl),
-		podsStore: cache.NewTTLStore(extractCacheEntryKey, ttl),
-		cacheTTL:  ttl,
+		cacheTTL: 5 * time.Second,
 	}
 }
 
-// getAllJobs retrieves all jobs from cache or API, using TTL store for automatic expiration
+// getAllJobs retrieves all jobs from cache or API, making API calls if cached data is stale
 func (c *kubernetesCache) getAllJobs(ctx context.Context, client *kubernetes.Clientset, namespace string, logger *logrus.Entry) (*v1.JobList, error) {
 	// Use namespace as cache key since we're caching all jobs in the namespace
 	key := fmt.Sprintf("all_jobs_%s", namespace)
 
-	// Try to get from cache first
-	if cached, exists, err := c.jobsStore.GetByKey(key); err == nil && exists {
-		if entry, ok := cached.(cacheEntry); ok {
-			if jobs, ok := entry.data.(*v1.JobList); ok {
-				logger.Infof("Returning cached jobs for namespace: %s (count: %d)", namespace, len(jobs.Items))
-				return jobs, nil
+	// Nested function to check cache and return data if fresh
+	checkCache := func() (*v1.JobList, bool) {
+		if cached, ok := c.jobs.Load(key); ok {
+			if entry, ok := cached.(*cacheEntry); ok {
+				if time.Since(entry.timestamp) < c.cacheTTL {
+					if jobs, ok := entry.data.(*v1.JobList); ok {
+						return jobs, true
+					}
+				}
 			}
 		}
+		return nil, false
 	}
 
-	// Fetch from API if not in cache
-	logger.Infof("Making Kubernetes API call to fetch all jobs for namespace: %s", namespace)
+	// Check cache first (fast path - no locking)
+	if jobs, found := checkCache(); found {
+		logger.Debugf("Returning cached jobs for namespace: %s (age: %v, count: %d)", namespace, time.Since(getTimestamp(&c.jobs, key)), len(jobs.Items))
+		return jobs, nil
+	}
+
+	// Use mutex to prevent concurrent API calls
+	c.jobsMutex.Lock()
+	defer c.jobsMutex.Unlock()
+
+	// Double-check cache after acquiring mutex (another goroutine might have updated it)
+	if jobs, found := checkCache(); found {
+		logger.Debugf("Returning cached jobs for namespace: %s (age: %v, count: %d) [double-check]", namespace, time.Since(getTimestamp(&c.jobs, key)), len(jobs.Items))
+		return jobs, nil
+	}
+
+	// Fetch from API if no cache entry exists or cached data is stale
+	logger.Debugf("Making Kubernetes API call to fetch all jobs for namespace: %s", namespace)
 	jobs, err := client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Errorf("Failed to fetch jobs from Kubernetes API for namespace %s: %v", namespace, err)
@@ -85,31 +97,52 @@ func (c *kubernetesCache) getAllJobs(ctx context.Context, client *kubernetes.Cli
 	}
 
 	// Store in cache
-	c.jobsStore.Add(cacheEntry{
-		key:  key,
-		data: jobs,
+	c.jobs.Store(key, &cacheEntry{
+		data:      jobs,
+		timestamp: time.Now(),
 	})
-	logger.Infof("Successfully fetched and cached %d jobs for namespace: %s", len(jobs.Items), namespace)
+
+	logger.Debugf("Successfully fetched and cached %d jobs for namespace: %s", len(jobs.Items), namespace)
 	return jobs, nil
 }
 
-// getAllPods retrieves all pods from cache or API, using TTL store for automatic expiration
+// getAllPods retrieves all pods from cache or API, making API calls if cached data is stale
 func (c *kubernetesCache) getAllPods(ctx context.Context, client *kubernetes.Clientset, namespace string, logger *logrus.Entry) (*corev1.PodList, error) {
 	// Use namespace as cache key since we're caching all pods in the namespace
 	key := fmt.Sprintf("all_pods_%s", namespace)
 
-	// Try to get from cache first
-	if cached, exists, err := c.podsStore.GetByKey(key); err == nil && exists {
-		if entry, ok := cached.(cacheEntry); ok {
-			if pods, ok := entry.data.(*corev1.PodList); ok {
-				logger.Infof("Returning cached pods for namespace: %s (count: %d)", namespace, len(pods.Items))
-				return pods, nil
+	// Nested function to check cache and return data if fresh
+	checkCache := func() (*corev1.PodList, bool) {
+		if cached, ok := c.pods.Load(key); ok {
+			if entry, ok := cached.(*cacheEntry); ok {
+				if time.Since(entry.timestamp) < c.cacheTTL {
+					if pods, ok := entry.data.(*corev1.PodList); ok {
+						return pods, true
+					}
+				}
 			}
 		}
+		return nil, false
 	}
 
-	// Fetch from API if not in cache
-	logger.Infof("Making Kubernetes API call to fetch all pods for namespace: %s", namespace)
+	// Check cache first (fast path - no locking)
+	if pods, found := checkCache(); found {
+		logger.Debugf("Returning cached pods for namespace: %s (age: %v, count: %d)", namespace, time.Since(getTimestamp(&c.pods, key)), len(pods.Items))
+		return pods, nil
+	}
+
+	// Use mutex to prevent concurrent API calls
+	c.podsMutex.Lock()
+	defer c.podsMutex.Unlock()
+
+	// Double-check cache after acquiring mutex (another goroutine might have updated it)
+	if pods, found := checkCache(); found {
+		logger.Debugf("Returning cached pods for namespace: %s (age: %v, count: %d) [double-check]", namespace, time.Since(getTimestamp(&c.pods, key)), len(pods.Items))
+		return pods, nil
+	}
+
+	// Fetch from API if no cache entry exists or cached data is stale
+	logger.Debugf("Making Kubernetes API call to fetch all pods for namespace: %s", namespace)
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Errorf("Failed to fetch pods from Kubernetes API for namespace %s: %v", namespace, err)
@@ -117,13 +150,23 @@ func (c *kubernetesCache) getAllPods(ctx context.Context, client *kubernetes.Cli
 	}
 
 	// Store in cache
-	c.podsStore.Add(cacheEntry{
-		key:  key,
-		data: pods,
+	c.pods.Store(key, &cacheEntry{
+		data:      pods,
+		timestamp: time.Now(),
 	})
 
-	logger.Infof("Successfully fetched and cached %d pods for namespace: %s", len(pods.Items), namespace)
+	logger.Debugf("Successfully fetched and cached %d pods for namespace: %s", len(pods.Items), namespace)
 	return pods, nil
+}
+
+// getTimestamp is a helper function to get the timestamp of a cache entry
+func getTimestamp(cache *sync.Map, key string) time.Time {
+	if cached, ok := cache.Load(key); ok {
+		if entry, ok := cached.(*cacheEntry); ok {
+			return entry.timestamp
+		}
+	}
+	return time.Time{}
 }
 
 type Kubernetes struct {
@@ -163,15 +206,15 @@ func (k *Kubernetes) clientset() (*kubernetes.Clientset, error) {
 
 	// Log rate limiter settings before creating client
 	if k.config.RateLimiter != nil {
-		k.logger.Info("Kubernetes client has custom rate limiter configured")
+		k.logger.Debug("Kubernetes client has custom rate limiter configured")
 	}
 
 	// Log QPS and Burst settings
 	if k.config.QPS > 0 || k.config.Burst > 0 {
-		k.logger.Infof("Kubernetes client rate limiter settings - QPS: %.2f, Burst: %d",
+		k.logger.Debugf("Kubernetes client rate limiter settings - QPS: %.2f, Burst: %d",
 			k.config.QPS, k.config.Burst)
 	} else {
-		k.logger.Info("Kubernetes client using default rate limiter settings")
+		k.logger.Debug("Kubernetes client using default rate limiter settings")
 	}
 
 	cli, err := kubernetes.NewForConfig(k.config)
@@ -212,7 +255,7 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 		}
 	}
 
-	k.logger.Infof("Filtered %d jobs with identifier '%s' from %d total jobs",
+	k.logger.Debugf("Filtered %d jobs with identifier '%s' from %d total jobs",
 		len(filteredJobs.Items), identifier, len(allJobs.Items))
 
 	return filteredJobs, nil
@@ -276,7 +319,7 @@ func (k *Kubernetes) LogListenerIP(ctx context.Context, identifier string) (stri
 		return "", fmt.Errorf("could not find pod for job with id %s", identifier)
 	}
 
-	k.logger.Infof("Found %d pods for job '%s' with identifier '%s'",
+	k.logger.Debugf("Found %d pods for job '%s' with identifier '%s'",
 		len(matchingPods), job.Name, identifier)
 
 	pod := matchingPods[0]
