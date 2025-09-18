@@ -74,7 +74,7 @@ func (c *kubernetesCache) getAllJobs(ctx context.Context, client *kubernetes.Cli
 
 	// Check cache first (fast path - no locking)
 	if jobs, found := checkCache(); found {
-		logger.Debugf("Returning cached jobs for namespace: %s (age: %v, count: %d)", namespace, time.Since(getTimestamp(&c.jobs, key)), len(jobs.Items))
+		logger.Infof("Returning cached jobs for namespace: %s (age: %v, count: %d)", namespace, time.Since(getTimestamp(&c.jobs, key)), len(jobs.Items))
 		return jobs, nil
 	}
 
@@ -84,12 +84,12 @@ func (c *kubernetesCache) getAllJobs(ctx context.Context, client *kubernetes.Cli
 
 	// Double-check cache after acquiring mutex (another goroutine might have updated it)
 	if jobs, found := checkCache(); found {
-		logger.Debugf("Returning cached jobs for namespace: %s (age: %v, count: %d) [double-check]", namespace, time.Since(getTimestamp(&c.jobs, key)), len(jobs.Items))
+		logger.Infof("Returning cached jobs for namespace: %s (age: %v, count: %d) [double-check]", namespace, time.Since(getTimestamp(&c.jobs, key)), len(jobs.Items))
 		return jobs, nil
 	}
 
 	// Fetch from API if no cache entry exists or cached data is stale
-	logger.Debugf("Making Kubernetes API call to fetch all jobs for namespace: %s", namespace)
+	logger.Infof("Making Kubernetes API call to fetch all jobs for namespace: %s", namespace)
 	jobs, err := client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Errorf("Failed to fetch jobs from Kubernetes API for namespace %s: %v", namespace, err)
@@ -102,7 +102,7 @@ func (c *kubernetesCache) getAllJobs(ctx context.Context, client *kubernetes.Cli
 		timestamp: time.Now(),
 	})
 
-	logger.Debugf("Successfully fetched and cached %d jobs for namespace: %s", len(jobs.Items), namespace)
+	logger.Infof("Successfully fetched and cached %d jobs for namespace: %s", len(jobs.Items), namespace)
 	return jobs, nil
 }
 
@@ -127,7 +127,7 @@ func (c *kubernetesCache) getAllPods(ctx context.Context, client *kubernetes.Cli
 
 	// Check cache first (fast path - no locking)
 	if pods, found := checkCache(); found {
-		logger.Debugf("Returning cached pods for namespace: %s (age: %v, count: %d)", namespace, time.Since(getTimestamp(&c.pods, key)), len(pods.Items))
+		logger.Infof("Returning cached pods for namespace: %s (age: %v, count: %d)", namespace, time.Since(getTimestamp(&c.pods, key)), len(pods.Items))
 		return pods, nil
 	}
 
@@ -137,12 +137,12 @@ func (c *kubernetesCache) getAllPods(ctx context.Context, client *kubernetes.Cli
 
 	// Double-check cache after acquiring mutex (another goroutine might have updated it)
 	if pods, found := checkCache(); found {
-		logger.Debugf("Returning cached pods for namespace: %s (age: %v, count: %d) [double-check]", namespace, time.Since(getTimestamp(&c.pods, key)), len(pods.Items))
+		logger.Infof("Returning cached pods for namespace: %s (age: %v, count: %d) [double-check]", namespace, time.Since(getTimestamp(&c.pods, key)), len(pods.Items))
 		return pods, nil
 	}
 
 	// Fetch from API if no cache entry exists or cached data is stale
-	logger.Debugf("Making Kubernetes API call to fetch all pods for namespace: %s", namespace)
+	logger.Infof("Making Kubernetes API call to fetch all pods for namespace: %s", namespace)
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Errorf("Failed to fetch pods from Kubernetes API for namespace %s: %v", namespace, err)
@@ -155,7 +155,7 @@ func (c *kubernetesCache) getAllPods(ctx context.Context, client *kubernetes.Cli
 		timestamp: time.Now(),
 	})
 
-	logger.Debugf("Successfully fetched and cached %d pods for namespace: %s", len(pods.Items), namespace)
+	logger.Infof("Successfully fetched and cached %d pods for namespace: %s", len(pods.Items), namespace)
 	return pods, nil
 }
 
@@ -206,15 +206,15 @@ func (k *Kubernetes) clientset() (*kubernetes.Clientset, error) {
 
 	// Log rate limiter settings before creating client
 	if k.config.RateLimiter != nil {
-		k.logger.Debug("Kubernetes client has custom rate limiter configured")
+		k.logger.Info("Kubernetes client has custom rate limiter configured")
 	}
 
 	// Log QPS and Burst settings
 	if k.config.QPS > 0 || k.config.Burst > 0 {
-		k.logger.Debugf("Kubernetes client rate limiter settings - QPS: %.2f, Burst: %d",
+		k.logger.Infof("Kubernetes client rate limiter settings - QPS: %.2f, Burst: %d",
 			k.config.QPS, k.config.Burst)
 	} else {
-		k.logger.Debug("Kubernetes client using default rate limiter settings")
+		k.logger.Info("Kubernetes client using default rate limiter settings")
 	}
 
 	cli, err := kubernetes.NewForConfig(k.config)
@@ -255,7 +255,7 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 		}
 	}
 
-	k.logger.Debugf("Filtered %d jobs with identifier '%s' from %d total jobs",
+	k.logger.Infof("Filtered %d jobs with identifier '%s' from %d total jobs",
 		len(filteredJobs.Items), identifier, len(allJobs.Items))
 
 	return filteredJobs, nil
@@ -319,7 +319,7 @@ func (k *Kubernetes) LogListenerIP(ctx context.Context, identifier string) (stri
 		return "", fmt.Errorf("could not find pod for job with id %s", identifier)
 	}
 
-	k.logger.Debugf("Found %d pods for job '%s' with identifier '%s'",
+	k.logger.Infof("Found %d pods for job '%s' with identifier '%s'",
 		len(matchingPods), job.Name, identifier)
 
 	pod := matchingPods[0]
