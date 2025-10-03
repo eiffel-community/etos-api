@@ -244,7 +244,9 @@ class TestRouters(TestCase):
             2. Verify that the status code is 422.
             3. Verify that the error message indicates missing required field.
         """
-        self.logger.info("STEP: Send a POST request to etos without artifact_identity or artifact_id.")
+        self.logger.info(
+            "STEP: Send a POST request to etos without artifact_identity or artifact_id."
+        )
         response = self.client.post(
             "/api/etos",
             json={
@@ -263,18 +265,20 @@ class TestRouters(TestCase):
         assert any(expected_message in msg for msg in error_messages)
 
     def test_start_etos_empty_artifact_identity_and_none_artifact_id(self):
-        """Test that POST requests to /etos with empty artifact_identity fail during processing.
+        """Test that POST requests to /etos with empty artifact_identity fail validation.
 
         Approval criteria:
-            - POST requests to ETOS with empty artifact_identity shall return 400.
-            - The error should occur during suite validation or artifact processing.
+            - POST requests to ETOS with empty artifact_identity shall return 422.
+            - The error message shall indicate invalid format (empty doesn't start with 'pkg:').
 
         Test steps::
             1. Send a POST request to etos with empty artifact_identity and None artifact_id.
-            2. Verify that the status code is 400.
-            3. Verify that the request fails (empty identity is treated as provided but invalid).
+            2. Verify that the status code is 422.
+            3. Verify that the error message indicates invalid format.
         """
-        self.logger.info("STEP: Send a POST request to etos with empty artifact_identity and None artifact_id.")
+        self.logger.info(
+            "STEP: Send a POST request to etos with empty artifact_identity and None artifact_id."
+        )
         response = self.client.post(
             "/api/etos",
             json={
@@ -283,19 +287,20 @@ class TestRouters(TestCase):
                 "test_suite_url": "http://localhost/my_test.json",
             },
         )
-        self.logger.info("STEP: Verify that the status code is 400.")
-        assert response.status_code == 400
+        self.logger.info("STEP: Verify that the status code is 422.")
+        assert response.status_code == 422
 
-        self.logger.info("STEP: Verify that the request fails during processing.")
+        self.logger.info("STEP: Verify that the error message indicates invalid format.")
         error_detail = response.json()
         assert "detail" in error_detail
-        # Empty string is considered "provided" by validation, so it fails later in processing
+        error_messages = [error["msg"] for error in error_detail["detail"]]
+        expected_message = "artifact_identity must be a string starting with 'pkg:'"
+        assert any(expected_message in msg for msg in error_messages)
 
     def test_start_etos_both_artifact_identity_and_id_provided(self):
-        """Test that POST requests to /etos with both artifact_identity and artifact_id fail validation.
-
+        """
         Approval criteria:
-            - POST requests to ETOS with both artifact_identity and artifact_id shall return 422.
+            - POST requests to ETOS with both artifact_identity and artifact_id returns 422.
             - The error message shall indicate that only one is required.
 
         Test steps::
@@ -303,7 +308,9 @@ class TestRouters(TestCase):
             2. Verify that the status code is 422.
             3. Verify that the error message indicates only one is required.
         """
-        self.logger.info("STEP: Send a POST request to etos with both artifact_identity and artifact_id.")
+        self.logger.info(
+            "STEP: Send a POST request to etos with both artifact_identity and artifact_id."
+        )
         response = self.client.post(
             "/api/etos",
             json={
