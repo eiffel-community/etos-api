@@ -35,12 +35,12 @@ from starlette.responses import Response
 from opentelemetry import trace
 from opentelemetry.trace import Span
 
-
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .utilities import (
     wait_for_artifact_created,
     download_suite,
     validate_suite,
+    validate_artifact,
     convert_to_rfc1123,
     recipes_from_tests,
 )
@@ -123,6 +123,11 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     LOGGER.info("Validating test suite.")
     await validate_suite(test_suite)
     LOGGER.info("Test suite validated.")
+
+    # Validate artifact identity and ID before proceeding
+    LOGGER.info("Validating artifact identity and ID.")
+    await validate_artifact(artifact_identity=etos.artifact_identity, artifact_id=etos.artifact_id)
+    LOGGER.info("Artifact identity and ID validated.")
 
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME", "localhost"), "ETOS API")
 

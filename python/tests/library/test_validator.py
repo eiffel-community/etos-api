@@ -20,7 +20,11 @@ from unittest.mock import patch
 
 import pytest
 
-from etos_api.library.validator import SuiteValidator, ValidationError
+from etos_api.library.validator import (
+    ArtifactValidator,
+    SuiteValidator,
+    ValidationError,
+)
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
@@ -356,3 +360,171 @@ class TestValidator:
             self.logger.info("STEP: Validate a suite without the required key.")
             with pytest.raises(ValidationError):
                 await validator.validate([base_suite])
+
+
+class TestArtifactValidator:
+    """Test the artifact validation functions."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.validator = ArtifactValidator()
+
+    def test_validate_purl_valid(self):
+        """Test that valid PURL strings are accepted."""
+        valid_purls = [
+            "pkg:npm/lodash@4.17.21",
+            "pkg:pypi/requests@2.25.1",
+            "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+            "pkg:golang/github.com/gorilla/mux@v1.8.0",
+            "pkg:docker/nginx@latest",
+            "pkg:generic/openssl@1.1.1k",
+        ]
+
+        for purl in valid_purls:
+            assert self.validator.validate_purl(purl) is True
+
+    def test_validate_purl_invalid(self):
+        """Test that invalid PURL strings are rejected."""
+        invalid_purls = [
+            "",
+            None,
+            "not-a-purl",
+            "http://example.com",
+            "pkg:",  # Missing parts
+            "pkg:npm/",  # Incomplete
+            "npm/lodash@4.17.21",  # Missing pkg: prefix
+            "PKG:npm/lodash@4.17.21",  # Wrong case
+        ]
+
+        for purl in invalid_purls:
+            assert self.validator.validate_purl(purl) is False
+
+    def test_validate_uuid_valid(self):
+        """Test that valid UUID strings are accepted."""
+        valid_uuids = [
+            "550e8400-e29b-41d4-a716-446655440000",
+            "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+            "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
+            "6ba7b812-9dad-11d1-80b4-00c04fd430c8",
+            "6ba7b814-9dad-11d1-80b4-00c04fd430c8",
+            "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        ]
+
+        for uuid_str in valid_uuids:
+            assert self.validator.validate_uuid(uuid_str) is True
+
+    def test_validate_uuid_invalid(self):
+        """Test that invalid UUID strings are rejected."""
+        invalid_uuids = [
+            "",
+            None,
+            "not-a-uuid",
+            "550e8400-e29b-41d4-a716",  # Too short
+            "550e8400-e29b-41d4-a716-446655440000-extra",  # Too long
+            "550e8400-e29b-41d4-a716-44665544000g",  # Invalid character (g)
+        ]
+
+        for uuid_str in invalid_uuids:
+            assert self.validator.validate_uuid(uuid_str) is False
+
+    def test_validate_artifact_identity_or_id_valid_purl(self):
+        """Test validation with valid PURL artifact_identity."""
+        # Should not raise any exception
+        self.validator.validate_artifact_identity_or_id(
+            artifact_identity="pkg:npm/lodash@4.17.21", artifact_id=None
+        )
+
+    def test_validate_artifact_identity_or_id_valid_uuid(self):
+        """Test validation with valid UUID artifact_id."""
+        # Should not raise any exception
+        self.validator.validate_artifact_identity_or_id(
+            artifact_identity=None, artifact_id="550e8400-e29b-41d4-a716-446655440000"
+        )
+
+    def test_validate_artifact_identity_or_id_invalid_purl(self):
+        """Test validation with invalid PURL artifact_identity raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            self.validator.validate_artifact_identity_or_id(
+                artifact_identity="not-a-purl", artifact_id=None
+            )
+        assert "Invalid artifact_identity" in str(exc_info.value)
+        assert "is not a valid PURL" in str(exc_info.value)
+
+    def test_validate_artifact_identity_or_id_invalid_uuid(self):
+        """Test validation with invalid UUID artifact_id raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            self.validator.validate_artifact_identity_or_id(
+                artifact_identity=None, artifact_id="not-a-uuid"
+            )
+        assert "Invalid artifact_id" in str(exc_info.value)
+        assert "is not a valid UUID" in str(exc_info.value)
+
+    def test_validate_artifact_identity_or_id_both_provided(self):
+        """Test validation with both valid values provided."""
+        # Should not raise any exception when both are valid
+        self.validator.validate_artifact_identity_or_id(
+            artifact_identity="pkg:npm/lodash@4.17.21",
+            artifact_id="550e8400-e29b-41d4-a716-446655440000",
+        )
+
+    def test_validate_artifact_identity_or_id_neither_provided(self):
+        """Test validation with neither value provided."""
+        # Should not raise any exception - no validation is performed when both are None
+        self.validator.validate_artifact_identity_or_id(artifact_identity=None, artifact_id=None)
+
+    # Tests for ArtifactValidator class methods (should raise ValueError)
+    def test_artifact_validator_validate_purl_valid(self):
+        """Test ArtifactValidator.validate_purl with valid PURL strings."""
+        valid_purls = [
+            "pkg:npm/lodash@4.17.21",
+            "pkg:pypi/requests@2.25.1",
+            "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+        ]
+
+        for purl in valid_purls:
+            assert self.validator.validate_purl(purl) is True
+
+    def test_artifact_validator_validate_uuid_valid(self):
+        """Test ArtifactValidator.validate_uuid with valid UUID strings."""
+        valid_uuids = [
+            "550e8400-e29b-41d4-a716-446655440000",
+            "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+        ]
+
+        for uuid_str in valid_uuids:
+            assert self.validator.validate_uuid(uuid_str) is True
+
+    def test_artifact_validator_validate_artifact_identity_or_id_valid(self):
+        """Test ArtifactValidator.validate_artifact_identity_or_id with valid inputs."""
+        # Should not raise any exception
+        self.validator.validate_artifact_identity_or_id(
+            artifact_identity="pkg:npm/lodash@4.17.21", artifact_id=None
+        )
+
+        self.validator.validate_artifact_identity_or_id(
+            artifact_identity=None, artifact_id="550e8400-e29b-41d4-a716-446655440000"
+        )
+
+    def test_artifact_validator_validate_identity_or_id_invalid_purl(self):
+        """Test ArtifactValidator.validate_artifact_identity_or_id with invalid PURL.
+
+        Should raise ValueError.
+        """
+        with pytest.raises(ValueError) as exc_info:
+            self.validator.validate_artifact_identity_or_id(
+                artifact_identity="not-a-purl", artifact_id=None
+            )
+        assert "Invalid artifact_identity" in str(exc_info.value)
+        assert "is not a valid PURL" in str(exc_info.value)
+
+    def test_artifact_validator_validate_identity_or_id_invalid_uuid(self):
+        """Test ArtifactValidator.validate_artifact_identity_or_id with invalid UUID.
+
+        Should raise ValueError.
+        """
+        with pytest.raises(ValueError) as exc_info:
+            self.validator.validate_artifact_identity_or_id(
+                artifact_identity=None, artifact_id="not-a-uuid"
+            )
+        assert "Invalid artifact_id" in str(exc_info.value)
+        assert "is not a valid UUID" in str(exc_info.value)

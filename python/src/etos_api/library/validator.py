@@ -22,6 +22,7 @@ from uuid import UUID
 from pydantic import BaseModel  # pylint:disable=no-name-in-module
 from pydantic import ValidationError, conlist, constr, field_validator
 from pydantic.fields import PrivateAttr
+from packageurl import PackageURL
 
 from etos_api.library.docker import Docker
 
@@ -176,3 +177,51 @@ class SuiteValidator:
                 assert (
                     await docker.digest(test_runner) is not None
                 ), f"Test runner {test_runner} not found"
+
+
+class ArtifactValidator:
+    """Validator for artifact identities and IDs."""
+
+    def validate_artifact_identity_or_id(
+        self, artifact_identity: str = None, artifact_id: str = None
+    ) -> None:
+        """Validate that artifact_identity or artifact_id is a valid PURL or UUID.
+
+        :param artifact_identity: The artifact identity to validate (should be PURL if provided).
+        :param artifact_id: The artifact ID to validate (should be UUID if provided).
+        :raises ValueError: If validation fails.
+        """
+        if artifact_identity:
+            if not self.validate_purl(artifact_identity):
+                raise ValueError(
+                    f"Invalid artifact_identity: '{artifact_identity}' is not a valid PURL. "
+                    "PURL must start with 'pkg:'"
+                )
+
+        if artifact_id:
+            if not self.validate_uuid(artifact_id):
+                raise ValueError(f"Invalid artifact_id: '{artifact_id}' is not a valid UUID.")
+
+    def validate_purl(self, purl_string: str) -> bool:
+        """Validate if a string is a valid Package URL (PURL).
+
+        :param purl_string: The string to validate as a PURL.
+        :return: True if valid PURL, False otherwise.
+        """
+        try:
+            PackageURL.from_string(purl_string)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    def validate_uuid(self, uuid_string: str) -> bool:
+        """Validate if a string is a valid UUID.
+
+        :param uuid_string: The string to validate as a UUID.
+        :return: True if valid UUID, False otherwise.
+        """
+        try:
+            UUID(str(uuid_string))
+            return True
+        except (ValueError, TypeError):
+            return False

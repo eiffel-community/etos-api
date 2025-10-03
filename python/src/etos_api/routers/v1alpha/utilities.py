@@ -28,7 +28,7 @@ from etos_api.library.graphql_queries import (
     ARTIFACT_IDENTITY_QUERY,
     VERIFY_ARTIFACT_ID_EXISTS,
 )
-from etos_api.library.validator import SuiteValidator
+from etos_api.library.validator import SuiteValidator, ArtifactValidator
 
 LOGGER = logging.getLogger(__name__)
 
@@ -134,6 +134,26 @@ def convert_to_rfc1123(value: str) -> str:
     # Replace multiple consecutive hyphens with a single hyphen
     result = re.sub(r"-+", "-", result)
     return result.lower()
+
+
+async def validate_artifact(artifact_identity: str = None, artifact_id=None) -> None:
+    """Validate the artifact identity and ID through the ArtifactValidator.
+
+    :param artifact_identity: The artifact identity to validate (should be PURL if provided).
+    :param artifact_id: The artifact ID to validate (can be UUID object or string).
+    """
+    span = trace.get_current_span()
+
+    try:
+        # Convert artifact_id to string if it's not None
+        artifact_id_str = str(artifact_id) if artifact_id is not None else None
+        ArtifactValidator().validate_artifact_identity_or_id(artifact_identity, artifact_id_str)
+    except ValueError as exception:
+        msg = "Failed to validate artifact identifier"
+        LOGGER.error(msg)
+        LOGGER.error(exception)
+        span.add_event(msg)
+        raise HTTPException(status_code=400, detail=msg) from exception
 
 
 async def recipes_from_tests(tests: list[dict]) -> list[dict]:
