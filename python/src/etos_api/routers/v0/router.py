@@ -30,8 +30,9 @@ from opentelemetry.trace import Span
 
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.utilities import sync_to_async
+
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
-from .utilities import wait_for_artifact_created, validate_suite, validate_artifact
+from .utilities import wait_for_artifact_created, validate_suite
 
 ETOSv0 = FastAPI(
     title="ETOS",
@@ -106,11 +107,6 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=
     LOGGER.info("Validating test suite.")
     await validate_suite(etos.test_suite_url)
     LOGGER.info("Test suite validated.")
-
-    # Validate artifact identity and ID before proceeding
-    LOGGER.info("Validating artifact identity and ID.")
-    await validate_artifact(artifact_identity=etos.artifact_identity, artifact_id=etos.artifact_id)
-    LOGGER.info("Artifact identity and ID validated.")
 
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME"), "ETOS API")
     await sync_to_async(etos_library.config.rabbitmq_publisher_from_environment)
