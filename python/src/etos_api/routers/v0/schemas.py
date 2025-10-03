@@ -49,11 +49,7 @@ class StartEtosRequest(EtosRequest):
 
     @field_validator("artifact_id")
     def validate_id_or_identity(cls, artifact_id, info):
-        """Validate that at least one and only one of id and identity are set.
-
-        Also validates that:
-        - artifact_identity must start with "pkg:" if provided
-        - artifact_id UUID validation is handled by Pydantic's built-in UUID type
+        """Validate that id/identity is set correctly.
 
         :param artifact_id: The value of 'artifact_id' to validate.
         :value artifact_id: str or None
