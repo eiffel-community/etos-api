@@ -167,9 +167,7 @@ class SuiteValidator:
             try:
                 suite = Suite(**suite_json)
             except ValidationError as exception:
-                raise AssertionError(
-                    "Not a valid test suite was provided"
-                ) from exception
+                raise AssertionError("Not a valid test suite was provided") from exception
             assert suite
 
             for recipe in suite.recipes:

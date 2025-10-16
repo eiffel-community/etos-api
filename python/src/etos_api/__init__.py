@@ -14,8 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API module."""
+
 import os
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError, version as _version
 
 from etos_lib.logging.logger import setup_logging
 from opentelemetry import trace
@@ -42,9 +43,9 @@ from .main import APP
 os.environ["ETOS_ENABLE_SENDING_LOGS"] = "false"
 
 try:
-    VERSION = version("etos_api")
+    version = _version("etos_api")
 except PackageNotFoundError:
-    VERSION = "Unknown"
+    version = "Unknown"
 
 DEV = os.getenv("DEV", "false").lower() == "true"
 
@@ -52,7 +53,7 @@ if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
     OTEL_RESOURCE = Resource.create(
         {
             SERVICE_NAME: "etos-api",
-            SERVICE_VERSION: VERSION,
+            SERVICE_VERSION: version,
         },
     )
 
@@ -65,10 +66,10 @@ if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
     PROCESSOR = BatchSpanProcessor(EXPORTER)
     PROVIDER.add_span_processor(PROCESSOR)
     trace.set_tracer_provider(PROVIDER)
-    setup_logging("ETOS API", VERSION, otel_resource=OTEL_RESOURCE)
+    setup_logging("ETOS API", version, otel_resource=OTEL_RESOURCE)
 
     FastAPIInstrumentor().instrument_app(APP, tracer_provider=PROVIDER, excluded_urls=".*/ping")
 else:
-    setup_logging("ETOS API", VERSION)
+    setup_logging("ETOS API", version)
 
 RegisterProviders()

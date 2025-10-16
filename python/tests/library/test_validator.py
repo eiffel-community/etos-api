@@ -14,13 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for the validator library."""
+
 import logging
 import sys
 from unittest.mock import patch
 
 import pytest
 
-from etos_api.library.validator import SuiteValidator, ValidationError
+from etos_api.library.validator import SuiteValidator
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
@@ -75,7 +76,7 @@ class TestValidator:
         try:
             await validator.validate(test_suite)
             exception = False
-        except (AssertionError, ValidationError):
+        except (AssertionError, AssertionError):
             exception = True
         self.logger.info("STEP: Verify that no exceptions were raised.")
         assert exception is False
@@ -88,7 +89,7 @@ class TestValidator:
 
         Test steps::
             1. Validate a suite with a missing constraint.
-            2. Verify that the validator raises ValidationError.
+            2. Verify that the validator raises AssertionError.
         """
         test_suite = [
             {
@@ -118,9 +119,9 @@ class TestValidator:
         try:
             await validator.validate(test_suite)
             exception = False
-        except ValidationError:
+        except AssertionError:
             exception = True
-        self.logger.info("STEP: Verify that the validator raises ValidationError.")
+        self.logger.info("STEP: Verify that the validator raises AssertionError.")
         assert exception is True
 
     async def test_validate_wrong_types(self):
@@ -132,7 +133,7 @@ class TestValidator:
         Test steps::
             1. For each constraint.
                 1. Validate constraint with wrong type.
-                2. Verify that the validator raises ValidationError.
+                2. Verify that the validator raises AssertionError.
         """
         base_suite = {
             "name": "TestValidator",
@@ -204,8 +205,8 @@ class TestValidator:
         for constraint in constraints:
             self.logger.info("STEP: Validate constraint with wrong type.")
             base_suite["recipes"][0]["constraints"] = constraint
-            self.logger.info("STEP: Verify that the validator raises ValidationError.")
-            with pytest.raises(ValidationError):
+            self.logger.info("STEP: Verify that the validator raises AssertionError.")
+            with pytest.raises(AssertionError):
                 await validator.validate([base_suite])
 
     async def test_validate_too_many_constraints(self):
@@ -216,7 +217,7 @@ class TestValidator:
 
         Test steps::
             1. Validate a suite with a constraint defined multiple times.
-            2. Verify that the validator raises ValidationError.
+            2. Verify that the validator raises AssertionError.
         """
         test_suite = [
             {
@@ -248,9 +249,9 @@ class TestValidator:
         try:
             await validator.validate(test_suite)
             exception = False
-        except ValidationError:
+        except AssertionError:
             exception = True
-        self.logger.info("STEP: Verify that the validator raises ValidationError.")
+        self.logger.info("STEP: Verify that the validator raises AssertionError.")
         assert exception is True
 
     async def test_validate_unknown_constraint(self):
@@ -261,7 +262,7 @@ class TestValidator:
 
         Test steps::
             1. Validate a suite with an unknown constraint.
-            2. Verify that the validator raises ValidationError.
+            2. Verify that the validator raises AssertionError.
         """
         test_suite = [
             {
@@ -295,7 +296,7 @@ class TestValidator:
             exception = False
         except TypeError:
             exception = True
-        self.logger.info("STEP: Verify that the validator raises ValidationError.")
+        self.logger.info("STEP: Verify that the validator raises AssertionError.")
         assert exception is True
 
     async def test_validate_empty_constraints(self):
@@ -354,5 +355,5 @@ class TestValidator:
         for constraint in constraints:
             base_suite["recipes"][0]["constraints"] = constraint
             self.logger.info("STEP: Validate a suite without the required key.")
-            with pytest.raises(ValidationError):
+            with pytest.raises(AssertionError):
                 await validator.validate([base_suite])
