@@ -105,6 +105,7 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=
     span.set_attribute("etos.id", tercc.meta.event_id)
 
     LOGGER.info("Validating test suite.")
+    span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
     await validate_suite(etos.test_suite_url)
     LOGGER.info("Test suite validated.")
 

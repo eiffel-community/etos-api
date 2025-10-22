@@ -117,6 +117,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
     span.set_attribute("etos.id", testrun_id)
 
     LOGGER.info("Download test suite.")
+    span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
     test_suite = await download_suite(etos.test_suite_url)
     LOGGER.info("Test suite downloaded.")
 
