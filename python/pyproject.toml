@@ -40,7 +40,13 @@ Homepage = "https://github.com/eiffel-community/etos-api"
 Repository = "https://github.com/eiffel-community/etos-api"
 
 [project.optional-dependencies]
-testing = ["pytest", "pytest-cov"]
+testing = [
+    "pytest",
+    "pytest-cov",
+    "tox",
+    "pytest-asyncio",
+    "httpx"
+]
 
 [tool.build_sphinx]
 source_dir = "docs"
