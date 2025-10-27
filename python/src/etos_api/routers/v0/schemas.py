@@ -49,7 +49,7 @@ class StartEtosRequest(EtosRequest):
 
     @field_validator("artifact_id")
     def validate_id_or_identity(cls, artifact_id, info):
-        """Validate that at least one and only one of id and identity are set.
+        """Validate that id/identity is set correctly.
 
         :param artifact_id: The value of 'artifact_id' to validate.
         :value artifact_id: str or None
@@ -59,10 +59,23 @@ class StartEtosRequest(EtosRequest):
         :rtype: str or None
         """
         values = info.data
-        if values.get("artifact_identity") is None and not artifact_id:
+        artifact_identity = values.get("artifact_identity")
+
+        # Check that at least one is provided
+        if artifact_identity is None and not artifact_id:
             raise ValueError("At least one of 'artifact_identity' or 'artifact_id' is required.")
-        if values.get("artifact_identity") is not None and artifact_id:
+
+        # Check that only one is provided
+        if artifact_identity is not None and artifact_id:
             raise ValueError("Only one of 'artifact_identity' or 'artifact_id' is required.")
+
+        # Validate artifact_identity format if provided
+        if artifact_identity is not None:
+            if not isinstance(artifact_identity, str) or not artifact_identity.startswith("pkg:"):
+                raise ValueError("artifact_identity must be a string starting with 'pkg:'")
+
+        # Note: artifact_id UUID validation is handled by Pydantic's built-in UUID type validation
+
         return artifact_id
 
 
