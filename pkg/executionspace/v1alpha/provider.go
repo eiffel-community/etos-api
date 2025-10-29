@@ -86,6 +86,7 @@ type StartRequest struct {
 type Dataset struct {
 	ETRBranch string `json:"ETR_BRANCH"`
 	ETRRepo   string `json:"ETR_REPO"`
+	DEV       bool   `json:"DEV"`
 }
 
 type StartResponse struct {
@@ -219,6 +220,9 @@ func (h ProviderServiceHandler) Start(w http.ResponseWriter, r *http.Request, ps
 	}
 	if startReq.Dataset.ETRRepo != "" {
 		startReq.Environment["ETR_REPOSITORY"] = startReq.Dataset.ETRRepo
+	}
+	if startReq.Dataset.DEV {
+		startReq.Environment["DEV"] = "true"
 	}
 
 	go h.provider.Checkout(logger, ctx, provider.ExecutorConfig{
