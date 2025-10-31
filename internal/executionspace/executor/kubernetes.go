@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/net"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	watch "k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -190,8 +191,13 @@ func (k KubernetesExecutor) Stop(ctx context.Context, logger *logrus.Entry, name
 	propagation := metav1.DeletePropagationForeground
 	err := jobs.Delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 	if err != nil {
-		logger.Error(err.Error())
-		return err
+		if apierrors.IsNotFound(err) {
+			logger.Warningf("Job %s not found, assuming already deleted", name)
+			return nil
+		} else {
+			logger.Error(err.Error())
+			return err
+		}
 	}
 	watcher, err := k.client.CoreV1().Pods(k.namespace).Watch(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", name)})
 	if err != nil {
