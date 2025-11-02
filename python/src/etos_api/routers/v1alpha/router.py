@@ -32,7 +32,8 @@ from etos_lib.kubernetes.schemas.testrun import (
 from etos_lib.kubernetes import TestRun, Environment, Kubernetes
 from fastapi import FastAPI, HTTPException
 from starlette.responses import Response
-from opentelemetry import trace
+from opentelemetry import trace, context
+from opentelemetry.propagate import inject
 from opentelemetry.trace import Span
 
 
@@ -103,6 +104,18 @@ async def get_subsuite(sub_suite_id: str) -> dict:
 async def health_check():
     """Check the status of the API and verify the client version."""
     return Response(status_code=204)
+
+
+def get_current_context() -> str:
+    """Get the current OpenTelemetry context."""
+    ctx = context.get_current()
+    LOGGER.info("Current OpenTelemetry context: %s", ctx)
+    carrier = {}
+    # inject() creates a dict with context reference,
+    # e. g. {'traceparent': '00-0be6c260d9cbe9772298eaf19cb90a5b-371353ee8fbd3ced-01'}
+    inject(carrier)
+    env = ",".join(f"{k}={v}" for k, v in carrier.items())
+    return env
 
 
 async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
@@ -198,6 +211,9 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                 "etos.eiffel-community.github.io/id": testrun_id,
                 "etos.eiffel-community.github.io/cluster": os.getenv("ETOS_CLUSTER", "Unknown"),
             },
+            annotations={
+                "etos.eiffel-community.github.io/traceparent": get_current_context(),
+            },
         ),
         spec=TestRunSpec(
             cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
@@ -205,13 +221,15 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
             retention=retention,
             suiteRunner=Image(
                 image=os.getenv(
-                    "SUITE_RUNNER_IMAGE", "registry.nordix.org/eiffel/etos-suite-runner:latest"
+                    "SUITE_RUNNER_IMAGE",
+                    "registry.nordix.org/eiffel/etos-suite-runner:latest",
                 ),
                 imagePullPolicy=os.getenv("SUITE_RUNNER_IMAGE_PULL_POLICY", "IfNotPresent"),
             ),
             logListener=Image(
                 image=os.getenv(
-                    "LOG_LISTENER_IMAGE", "registry.nordix.org/eiffel/etos-log-listener:latest"
+                    "LOG_LISTENER_IMAGE",
+                    "registry.nordix.org/eiffel/etos-log-listener:latest",
                 ),
                 imagePullPolicy=os.getenv("LOG_LISTENER_IMAGE_PULL_POLICY", "IfNotPresent"),
             ),
