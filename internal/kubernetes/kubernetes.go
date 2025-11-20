@@ -242,15 +242,24 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 	}
 
 	// Try different labels for backward compatibility:
-	// - etos.eiffel-community.github.io/id is v1alpha+
-	// - id is v0 legacy
-	labelKeys := []string{"etos.eiffel-community.github.io/id", "id"}
+	var labelKeyPairs []map[string]string
+
+	// v1alpha+ labels
+	labelKeyPairs = append(labelKeyPairs, map[string]string{
+		"etos.eiffel-community.github.io/id": identifier,
+		"app.kubernetes.io/name":             "suite-runner",
+	})
+	// v0 legacy labels
+	labelKeyPairs = append(labelKeyPairs, map[string]string{
+		"id":  identifier,
+		"app": "suite-runner",
+	})
 
 	for _, job := range allJobs.Items {
-		for _, labelKey := range labelKeys {
-			if labelValue, exists := job.Labels[labelKey]; exists && labelValue == identifier {
+		for _, keyPair := range labelKeyPairs {
+			if keyPairExists(job.Labels, keyPair) {
 				filteredJobs.Items = append(filteredJobs.Items, job)
-				break // Found match, no need to check other labels for this job
+				break
 			}
 		}
 	}
@@ -259,6 +268,16 @@ func (k *Kubernetes) getJobsByIdentifier(ctx context.Context, client *kubernetes
 		len(filteredJobs.Items), identifier, len(allJobs.Items))
 
 	return filteredJobs, nil
+}
+
+// keyPairExists tests that all values in a map matches all values in keyPair.
+func keyPairExists(labels map[string]string, keyPair map[string]string) bool {
+	for key, value := range keyPair {
+		if labelValue, exists := labels[key]; !exists || labelValue != value {
+			return false
+		}
+	}
+	return true
 }
 
 // IsFinished checks if an ESR job is finished.
