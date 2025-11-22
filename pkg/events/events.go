@@ -41,7 +41,6 @@ func New(data []byte) (Event, error) {
 	}
 	e.Data = string(data)
 	return e, nil
-
 }
 
 // Write an event to a writer object
