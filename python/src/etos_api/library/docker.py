@@ -14,10 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Docker operations for the ETOS API."""
-import time
+
 import logging
-from typing import Optional, Mapping
+import time
 from threading import Lock
+from typing import Mapping, Optional
+
 import aiohttp
 
 DEFAULT_TAG = "latest"
@@ -47,6 +49,7 @@ class Docker:
         :param manifest_url: URL the token has been stored for.
         :return: A token or None.
         """
+        self.logger.info("Getting token for %r", manifest_url)
         with self.lock:
             token = self.tokens.get(manifest_url, {})
             if token:
@@ -54,6 +57,7 @@ class Docker:
                     self.logger.info("Registry token expired for %r", manifest_url)
                     self.tokens.pop(manifest_url)
                     token = {}
+            self.logger.info("Token is %r", token.get("token"))
             return token.get("token")
 
     async def head(
@@ -66,9 +70,10 @@ class Docker:
         :param token: Optional authorization token.
         :return: HTTP response.
         """
-        headers = {}
+        headers = {"Accept": "application/vnd.oci.image.index.v1+json"}
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
+        self.logger.info("Making HEAD request with headers: %r", headers)
 
         async with session.head(url, headers=headers) as response:
             return response
@@ -83,12 +88,18 @@ class Docker:
         :param parameters: Parameters to use for the authorization request.
         :return: Response JSON from authorization request.
         """
+        self.logger.info("Request token from %r with parameters %r", realm, parameters)
         async with session.get(realm, params=parameters) as response:
             response.raise_for_status()
-            return await response.json()
+            response_json = await response.json()
+            self.logger.info("Token: %r", response_json.get("token", ""))
+            return response_json
 
     async def authorize(
-        self, session: aiohttp.ClientSession, response: aiohttp.ClientResponse, manifest_url: str
+        self,
+        session: aiohttp.ClientSession,
+        response: aiohttp.ClientResponse,
+        manifest_url: str,
     ) -> str:
         """Authorize against container registry.
 
@@ -118,15 +129,18 @@ class Docker:
                     f"No realm URL found in www-authenticate header: {response.headers}"
                 )
         url = parameters.pop("realm")
+        self.logger.info("Request authorization token for %r", url)
         response_json = await self.get_token_from_container_registry(session, url, parameters)
         with self.lock:
+            self.logger.info("Saving new token from response: %r", response_json)
             self.tokens[manifest_url] = {
                 "token": response_json.get("token"),
                 "expire": time.time()
                 + response_json.get("expires_in", 0.0)
                 - self.token_expire_modifier,
             }
-        return ""
+            self.logger.info("Saved key %r data: %r", manifest_url, self.tokens[manifest_url])
+        return response_json.get("token", "")
 
     async def parse_headers(self, headers: Mapping) -> dict:
         """Parse the www-authenticate header and convert it to a dict.
