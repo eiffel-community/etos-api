@@ -57,7 +57,6 @@ class Docker:
                     self.logger.info("Registry token expired for %r", manifest_url)
                     self.tokens.pop(manifest_url)
                     token = {}
-            self.logger.info("Token is %r", token.get("token"))
             return token.get("token")
 
     async def head(
@@ -92,7 +91,6 @@ class Docker:
         async with session.get(realm, params=parameters) as response:
             response.raise_for_status()
             response_json = await response.json()
-            self.logger.info("Token: %r", response_json.get("token", ""))
             return response_json
 
     async def authorize(
