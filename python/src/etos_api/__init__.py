@@ -53,7 +53,7 @@ if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
     OTEL_RESOURCE = Resource.create(
         {
             SERVICE_NAME: "etos-api",
-            SERVICE_VERSION: version,
+            SERVICE_VERSION: VERSION,
         },
     )
 
