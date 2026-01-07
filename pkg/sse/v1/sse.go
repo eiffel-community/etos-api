@@ -258,7 +258,9 @@ func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprou
 
 	logger.Info("Client connected to SSE")
 
-	receiver := make(chan events.Event) // Channel is closed in Subscriber
+	// Buffered channel prevents Subscribe goroutine from blocking when client disconnects.
+	// The buffer allows Subscribe to send events without a receiver, allowing it to loop back and detect ctx.Done().
+	receiver := make(chan events.Event, 100)
 	go h.Subscribe(receiver, logger, r.Context(), last_id, identifier, url)
 
 	for {
