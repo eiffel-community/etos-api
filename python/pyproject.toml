@@ -52,6 +52,9 @@ testing = [
 source_dir = "docs"
 build_dir = "build/sphinx"
 
+[tool.black]
+line-length = 100
+
 [tool.devpi.upload]
 no-vcs = 1
 formats = "bdist_wheel"
