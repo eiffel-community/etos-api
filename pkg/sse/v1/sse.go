@@ -258,20 +258,31 @@ func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprou
 
 	logger.Info("Client connected to SSE")
 
-	// Buffered channel prevents Subscribe goroutine from blocking when client disconnects.
-	// The buffer allows Subscribe to send events without a receiver, allowing it to loop back and detect ctx.Done().
-	receiver := make(chan events.Event, 100)
-	go h.Subscribe(receiver, logger, r.Context(), last_id, identifier, url)
+	// Context to be canceled if the SSE server is shutting down
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	receiver := make(chan events.Event) // Channel is closed in Subscriber
+	go h.Subscribe(receiver, logger, ctx, last_id, identifier, url)
 
 	for {
 		select {
-		case <-r.Context().Done():
-			logger.Info("Client gone from SSE")
-			return
+		// Check if SSE server is shutting down, canceling the subscriber contexts.
 		case <-h.ctx.Done():
-			logger.Info("Shutting down")
-			return
-		case event := <-receiver:
+			if ctx.Err() == nil {
+				logger.Info("Shutting down, canceling subscriber context")
+				cancel()
+			}
+		case event, ok := <-receiver:
+			// Check if subscriber has closed the channel
+			if !ok {
+				if ctx.Err() != nil {
+					logger.Infof("Subscriber shutdown: %s", ctx.Err().Error())
+				} else {
+					logger.Info("Subscriber shutdown")
+				}
+				return
+			}
 			if err := event.Write(w); err != nil {
 				logger.Error(err)
 				continue
