@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Graphql query handler."""
+
 import asyncio
 from gql import gql, Client
 from gql.transport.aiohttp import AIOHTTPTransport

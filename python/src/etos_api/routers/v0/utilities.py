@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utilities specific for the ETOS endpoint."""
+
 import logging
 import asyncio
 import time
