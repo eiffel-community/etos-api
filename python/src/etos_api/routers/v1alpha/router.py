@@ -272,7 +272,7 @@ async def _abort(suite_id: str) -> dict:
         type="TestRun",
         namespace=testrun_client.namespace,
         label_selector=f"etos.eiffel-community.github.io/id={suite_id}",
-    )  # type:ignore
+    )  # type: ignore
     if not response.items:
         raise HTTPException(status_code=404, detail="Suite ID not found.")
     return {"message": f"Abort triggered for suite id: {suite_id}."}

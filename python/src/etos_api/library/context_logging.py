@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API context based logging."""
+
 import logging
 from contextvars import ContextVar
 from etos_lib.logging.logger import FORMAT_CONFIG

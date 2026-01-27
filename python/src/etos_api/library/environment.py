@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Environment for ETOS testruns."""
+
 import json
 from collections import OrderedDict
 from typing import Optional, Union

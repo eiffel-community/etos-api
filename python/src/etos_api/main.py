@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS API."""
+
 from fastapi import FastAPI
 from etos_api.routers.v0 import ETOSv0
 from etos_api.routers.v1alpha import ETOSv1Alpha

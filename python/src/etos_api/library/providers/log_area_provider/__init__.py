@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ETOS log area provider module."""
-import pathlib
 
+import pathlib
 
 LOG_AREA_PROVIDER_SCHEMA = (
     pathlib.Path(__file__).parent.resolve().joinpath("./schemas/jsontas_schema.json")
