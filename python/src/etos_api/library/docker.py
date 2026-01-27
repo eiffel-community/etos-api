@@ -69,7 +69,17 @@ class Docker:
         :param token: Optional authorization token.
         :return: HTTP response.
         """
-        headers = {"Accept": "application/vnd.oci.image.index.v1+json"}
+        # Accept OCI and Docker manifest formats (single-arch and multi-arch)
+        headers = {
+            "Accept": ", ".join(
+                [
+                    "application/vnd.oci.image.index.v1+json",
+                    "application/vnd.oci.image.manifest.v1+json",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                    "application/vnd.docker.distribution.manifest.list.v2+json",
+                ]
+            )
+        }
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         self.logger.info("Making HEAD request with headers: %r", headers)
