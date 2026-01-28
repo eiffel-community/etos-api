@@ -66,7 +66,7 @@ async def start_etos(
     :rtype: dict
     """
     with TRACER.start_as_current_span("start-etos", context=ctx) as span:
-        return await _start(etos, span, ctx)
+        return await _start(etos, span, otel_context.get_current())
 
 
 @ETOSV0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)

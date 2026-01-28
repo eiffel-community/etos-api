@@ -71,7 +71,7 @@ async def start_testrun(
     :rtype: dict
     """
     with TRACER.start_as_current_span("start-etos", context=ctx) as span:
-        return await _create_testrun(etos, span, ctx)
+        return await _create_testrun(etos, span, otel_context.get_current())
 
 
 @ETOSV1ALPHA.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
