@@ -17,57 +17,70 @@
 
 import logging
 import os
+from typing import Annotated
 from uuid import uuid4
 
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
-from fastapi import FastAPI, HTTPException
-from starlette.responses import RedirectResponse, Response
+from fastapi import Depends, FastAPI, HTTPException
 from kubernetes import client
+from opentelemetry import baggage as otel_baggage
+from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.trace import Span
+from starlette.responses import RedirectResponse, Response
 
 from etos_api.library.environment import Configuration, configure_testrun
+from etos_api.library.opentelemetry import context
 from etos_api.library.utilities import sync_to_async
 
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
-from .utilities import wait_for_artifact_created, validate_suite
+from .utilities import validate_suite, wait_for_artifact_created
 
 ETOSv0 = FastAPI(
     title="ETOS",
     version="v0",
     summary="API endpoints for ETOS v0 - I.e. the version before versions",
     root_path_in_servers=False,
+    dependencies=[Depends(context)],
 )
 TRACER = trace.get_tracer("etos_api.routers.etos.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
+# pylint:disable=too-many-locals,too-many-statements
 
 
 @ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
-async def start_etos(etos: StartEtosRequest):
+async def start_etos(
+    etos: StartEtosRequest,
+    ctx: Annotated[otel_context.Context, Depends(context)],
+):
     """Start ETOS execution on post.
 
     :param etos: ETOS pydantic model.
     :type etos: :obj:`etos_api.routers.etos.schemas.StartEtosRequest`
+    :param ctx: OpenTelemetry context with extracted headers.
+    :type ctx: :obj:`opentelemetry.context.Context`
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _start(etos, span)
+    with TRACER.start_as_current_span("start-etos", context=ctx) as span:
+        return await _start(etos, span, ctx)
 
 
 @ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
-async def abort_etos(suite_id: str):
+async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]):
     """Abort ETOS execution on delete.
 
     :param suite_id: ETOS suite id
     :type suite_id: str
+    :param ctx: OpenTelemetry context with extracted headers.
+    :type ctx: :obj:`opentelemetry.context.Context`
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("abort-etos"):
+    with TRACER.start_as_current_span("abort-etos", context=ctx):
         return await _abort(suite_id)
 
 
@@ -93,16 +106,20 @@ async def oldping():
     return RedirectResponse("/api/ping")
 
 
-async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=too-many-statements
+async def _start(etos: StartEtosRequest, span: Span, ctx: otel_context.Context) -> dict:
     """Start ETOS execution.
 
     :param etos: ETOS pydantic model.
     :param span: An opentelemetry span for tracing.
+    :param ctx: OpenTelemetry context with extracted headers.
     :return: JSON dictionary with response.
     """
     tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
     LOGGER.identifier.set(tercc.meta.event_id)
     span.set_attribute("etos.id", tercc.meta.event_id)
+    span.set_attribute(
+        "parent_activity", str(etos.parent_activity) if etos.parent_activity else "None"
+    )
 
     LOGGER.info("Validating test suite.")
     span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
@@ -174,6 +191,9 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=
             detail=f"Could not configure environment provider. {exception}",
         ) from exception
     LOGGER.info("Environment provider configured.")
+
+    ctx = otel_baggage.set_baggage("testrun_id", tercc.meta.event_id, context=ctx)
+    ctx = otel_baggage.set_baggage("artifact_id", artifact_id, context=ctx)
 
     LOGGER.info("Start event publisher.")
     await sync_to_async(etos_library.start_publisher)

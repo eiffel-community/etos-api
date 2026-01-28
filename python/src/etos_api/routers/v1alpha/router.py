@@ -17,33 +17,31 @@
 
 import logging
 import os
+from typing import Annotated
 from uuid import uuid4
 
 from etos_lib import ETOS
-from etos_lib.kubernetes.schemas.testrun import (
-    TestRun as TestRunSchema,
-    TestRunSpec,
-    Providers,
-    Image,
-    Metadata,
-    Retention,
-    TestRunner,
-)
-from etos_lib.kubernetes import TestRun, Environment, Kubernetes
-from fastapi import FastAPI, HTTPException
-from starlette.responses import Response
-from opentelemetry import trace, context
+from etos_lib.kubernetes import Environment, Kubernetes, TestRun
+from etos_lib.kubernetes.schemas.testrun import Image, Metadata, Providers, Retention
+from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema
+from etos_lib.kubernetes.schemas.testrun import TestRunner, TestRunSpec
+from fastapi import Depends, FastAPI, HTTPException
+from opentelemetry import baggage as otel_baggage
+from opentelemetry import context as otel_context
+from opentelemetry import trace
 from opentelemetry.propagate import inject
 from opentelemetry.trace import Span
+from starlette.responses import Response
 
+from etos_api.library.opentelemetry import context
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .utilities import (
-    wait_for_artifact_created,
-    download_suite,
-    validate_suite,
     convert_to_rfc1123,
+    download_suite,
     recipes_from_tests,
+    validate_suite,
+    wait_for_artifact_created,
 )
 
 ETOSv1Alpha = FastAPI(
@@ -51,35 +49,43 @@ ETOSv1Alpha = FastAPI(
     version="v1alpha",
     summary="API endpoints for ETOS v1 Alpha",
     root_path_in_servers=False,
+    dependencies=[Depends(context)],
 )
 TRACER = trace.get_tracer("etos_api.routers.testrun.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
+# pylint:disable=too-many-locals,too-many-statements
 
 
 @ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
-async def start_testrun(etos: StartTestrunRequest):
+async def start_testrun(
+    etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
+):
     """Start ETOS testrun on post.
 
     :param etos: ETOS pydantic model.
     :type etos: :obj:`etos_api.routers.etos.schemas.StartTestrunRequest`
+    :param ctx: OpenTelemetry context with extracted headers.
+    :type ctx: :obj:`opentelemetry.context.Context`
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _create_testrun(etos, span)
+    with TRACER.start_as_current_span("start-etos", context=ctx) as span:
+        return await _create_testrun(etos, span, ctx)
 
 
 @ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
-async def abort_testrun(suite_id: str):
+async def abort_testrun(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]):
     """Abort ETOS testrun on delete.
 
     :param suite_id: ETOS suite id
     :type suite_id: str
+    :param ctx: OpenTelemetry context with extracted headers.
+    :type ctx: :obj:`opentelemetry.context.Context`
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("abort-etos"):
+    with TRACER.start_as_current_span("abort-etos", context=ctx):
         return await _abort(suite_id)
 
 
@@ -106,23 +112,12 @@ async def health_check():
     return Response(status_code=204)
 
 
-def get_current_context() -> str:
-    """Get the current OpenTelemetry context."""
-    ctx = context.get_current()
-    LOGGER.info("Current OpenTelemetry context: %s", ctx)
-    carrier = {}
-    # inject() creates a dict with context reference,
-    # e. g. {'traceparent': '00-0be6c260d9cbe9772298eaf19cb90a5b-371353ee8fbd3ced-01'}
-    inject(carrier)
-    env = ",".join(f"{k}={v}" for k, v in carrier.items())
-    return env
-
-
-async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
+async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_context.Context) -> dict:
     """Create a testrun for ETOS to execute.
 
     :param etos: Testrun pydantic model.
     :param span: An opentelemetry span for tracing.
+    :param ctx: OpenTelemetry context with extracted headers.
     :return: JSON dictionary with response.
     """
     testrun_id = str(uuid4())
@@ -202,6 +197,22 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
         success=os.getenv("TESTRUN_SUCCESS_RETENTION"),
     )
 
+    ctx = otel_baggage.set_baggage("testrun_id", testrun_id, context=ctx)
+    ctx = otel_baggage.set_baggage("artifact_id", artifact_id, context=ctx)
+    ctx = otel_baggage.set_baggage(
+        "etos_cluster", os.getenv("ETOS_CLUSTER", "Unknown"), context=ctx
+    )
+    carrier = {}
+    # inject() creates a dict with context reference,
+    # e. g. {'traceparent': '00-0be6c260d9cbe9772298eaf19cb90a5b-371353ee8fbd3ced-01'}
+    inject(carrier, context=ctx)
+
+    annotations = {}
+    if carrier.get("traceparent"):
+        annotations["etos.eiffel-community.github.io/traceparent"] = carrier["traceparent"]
+    if carrier.get("baggage"):
+        annotations["etos.eiffel-community.github.io/baggage"] = carrier["baggage"]
+
     kubernetes = Kubernetes()
     testrun_spec = TestRunSchema(
         metadata=Metadata(
@@ -211,9 +222,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span) -> dict:
                 "etos.eiffel-community.github.io/id": testrun_id,
                 "etos.eiffel-community.github.io/cluster": os.getenv("ETOS_CLUSTER", "Unknown"),
             },
-            annotations={
-                "etos.eiffel-community.github.io/traceparent": get_current_context(),
-            },
+            annotations=annotations,
         ),
         spec=TestRunSpec(
             cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
