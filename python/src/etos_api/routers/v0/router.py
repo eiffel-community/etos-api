@@ -38,7 +38,7 @@ from etos_api.library.utilities import sync_to_async
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
 from .utilities import validate_suite, wait_for_artifact_created
 
-ETOSv0 = FastAPI(
+ETOSV0 = FastAPI(
     title="ETOS",
     version="v0",
     summary="API endpoints for ETOS v0 - I.e. the version before versions",
@@ -51,7 +51,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 # pylint:disable=too-many-locals,too-many-statements
 
 
-@ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
+@ETOSV0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
 async def start_etos(
     etos: StartEtosRequest,
     ctx: Annotated[otel_context.Context, Depends(context)],
@@ -69,7 +69,7 @@ async def start_etos(
         return await _start(etos, span, ctx)
 
 
-@ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
+@ETOSV0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
 async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]):
     """Abort ETOS execution on delete.
 
@@ -84,7 +84,7 @@ async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends
         return await _abort(suite_id)
 
 
-@ETOSv0.get("/ping", tags=["etos"], status_code=204)
+@ETOSV0.get("/ping", tags=["etos"], status_code=204)
 async def ping():
     """Ping the ETOS service in order to check if it is up and running.
 
@@ -94,7 +94,7 @@ async def ping():
     return Response(status_code=204)
 
 
-@ETOSv0.get("/selftest/ping")
+@ETOSV0.get("/selftest/ping")
 async def oldping():
     """Ping the ETOS service in order to check if it is up and running.
 

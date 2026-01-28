@@ -16,12 +16,13 @@
 """ETOS API."""
 
 from fastapi import FastAPI
-from etos_api.routers.v0 import ETOSv0
-from etos_api.routers.v1alpha import ETOSv1Alpha
 
-DEFAULT_VERSION = ETOSv0
+from etos_api.routers.v0 import ETOSV0
+from etos_api.routers.v1alpha import ETOSV1ALPHA
+
+DEFAULT_VERSION = ETOSV0
 
 APP = FastAPI()
-APP.mount("/api/v1alpha", ETOSv1Alpha, "ETOS V1 Alpha")
-APP.mount("/api/v0", ETOSv0, "ETOS V0")
+APP.mount("/api/v1alpha", ETOSV1ALPHA, "ETOS V1 Alpha")
+APP.mount("/api/v0", ETOSV0, "ETOS V0")
 APP.mount("/api", DEFAULT_VERSION, "ETOS V0")

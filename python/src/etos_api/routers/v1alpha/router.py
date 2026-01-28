@@ -44,7 +44,7 @@ from .utilities import (
     wait_for_artifact_created,
 )
 
-ETOSv1Alpha = FastAPI(
+ETOSV1ALPHA = FastAPI(
     title="ETOS",
     version="v1alpha",
     summary="API endpoints for ETOS v1 Alpha",
@@ -57,7 +57,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 # pylint:disable=too-many-locals,too-many-statements
 
 
-@ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
+@ETOSV1ALPHA.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
 async def start_testrun(
     etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
 ):
@@ -74,7 +74,7 @@ async def start_testrun(
         return await _create_testrun(etos, span, ctx)
 
 
-@ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
+@ETOSV1ALPHA.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
 async def abort_testrun(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]):
     """Abort ETOS testrun on delete.
 
@@ -89,7 +89,7 @@ async def abort_testrun(suite_id: str, ctx: Annotated[otel_context.Context, Depe
         return await _abort(suite_id)
 
 
-@ETOSv1Alpha.get("/testrun/{sub_suite_id}", tags=["etos"])
+@ETOSV1ALPHA.get("/testrun/{sub_suite_id}", tags=["etos"])
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
 
@@ -106,7 +106,7 @@ async def get_subsuite(sub_suite_id: str) -> dict:
     return environment_spec
 
 
-@ETOSv1Alpha.get("/ping", tags=["etos"], status_code=204)
+@ETOSV1ALPHA.get("/ping", tags=["etos"], status_code=204)
 async def health_check():
     """Check the status of the API and verify the client version."""
     return Response(status_code=204)
