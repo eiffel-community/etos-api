@@ -15,5 +15,5 @@
 # limitations under the License.
 """ETOS API etos module."""
 
-from .router import ETOSv0
 from . import schemas
+from .router import ETOSV0

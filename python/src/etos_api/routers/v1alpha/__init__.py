@@ -15,5 +15,5 @@
 # limitations under the License.
 """ETOS API testrun module."""
 
-from .router import ETOSv1Alpha
 from . import schemas
+from .router import ETOSV1ALPHA
