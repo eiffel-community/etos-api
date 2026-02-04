@@ -55,7 +55,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 async def start_etos(
     etos: StartEtosRequest,
     ctx: Annotated[otel_context.Context, Depends(context)],
-):
+) -> dict:
     """Start ETOS execution on post.
 
     :param etos: ETOS pydantic model.
@@ -70,7 +70,7 @@ async def start_etos(
 
 
 @ETOSV0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
-async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]):
+async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]) -> dict:
     """Abort ETOS execution on delete.
 
     :param suite_id: ETOS suite id

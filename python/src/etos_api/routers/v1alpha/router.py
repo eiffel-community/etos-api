@@ -60,7 +60,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 @ETOSV1ALPHA.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
 async def start_testrun(
     etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
-):
+) -> dict:
     """Start ETOS testrun on post.
 
     :param etos: ETOS pydantic model.
@@ -75,7 +75,9 @@ async def start_testrun(
 
 
 @ETOSV1ALPHA.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
-async def abort_testrun(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]):
+async def abort_testrun(
+    suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]
+) -> dict:
     """Abort ETOS testrun on delete.
 
     :param suite_id: ETOS suite id

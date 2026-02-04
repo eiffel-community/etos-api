@@ -39,7 +39,7 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from pydantic import BaseModel
 
 
-def setup_opentelemetry(app, version: str):
+def setup_opentelemetry(app, version: str) -> Resource:
     """Set up OpenTelemetry for ETOS API."""
     otel_resource = Resource.create(
         {
