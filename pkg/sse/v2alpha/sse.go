@@ -75,9 +75,9 @@ func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer 
 // LoadRoutes loads all the v2alpha routes.
 func (a Application) LoadRoutes(router *httprouter.Router) {
 	handler := &Handler{a.logger, a.cfg, a.ctx, a.streamer}
-	router.GET("/v2alpha/selftest/ping", handler.Selftest)
-	router.GET("/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
-	router.POST("/v2alpha/stream/:identifier", a.authorizer.Middleware(scope.DefineSSE, handler.CreateStream))
+	router.GET("/sse/v2alpha/selftest/ping", handler.Selftest)
+	router.GET("/sse/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
+	router.POST("/sse/v2alpha/stream/:identifier", a.authorizer.Middleware(scope.DefineSSE, handler.CreateStream))
 }
 
 // Selftest is a handler to just return 204.
@@ -102,16 +102,14 @@ type ErrorEvent struct {
 }
 
 // subscribe subscribes to stream and gets logs and events from it and writes them to a channel.
-func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer stream.Stream, ch chan<- events.Event, counter int, filter []string) {
+func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer stream.Stream, ch chan<- events.Event, lastID int, filter []string) {
 	defer close(ch)
 	var err error
 
 	consumeCh := make(chan []byte, 0)
 
 	offset := -1
-	if counter > 1 {
-		offset = counter
-	}
+	counter := 1 // lastID will default to 1 and the first event will be 1
 
 	closed, err := streamer.WithChannel(consumeCh).WithOffset(offset).WithFilter(filter).Consume(ctx)
 	if err != nil {
@@ -138,6 +136,13 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 			ch <- events.Event{Event: "error", Data: string(b)}
 			return
 		case msg := <-consumeCh:
+			// We have no reliable way of getting a specific offset on the SSE stream so
+			// we will need to iterate all events until we reach the last known ID.
+			if counter < lastID {
+				counter++
+				continue
+			}
+
 			event, err = events.New(msg)
 			if err != nil {
 				logger.WithError(err).Error("failed to parse SSE event")
