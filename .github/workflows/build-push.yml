@@ -207,6 +207,8 @@ jobs:
     outputs:
       executionSpaceImage: ${{ steps.image.outputs.image }}
   run-update-etos-defaults:
+    # We only update API, SSE and LogArea since those are the only ones that
+    # are automatically deployed by the ETOS cluster controller.
     needs: [build-api, build-sse, build-logarea]
     uses: ./.github/workflows/update-etos.yaml
     secrets: inherit

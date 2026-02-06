@@ -15,7 +15,6 @@ on:
         description: 'ETOS LogArea image'
         required: true
         type: string
-  workflow_dispatch:
 
 env:
   REPOSITORY_OWNER: eiffel-community
@@ -53,7 +52,7 @@ jobs:
         private-key: ${{ secrets.ETOS_PR_APP_PRIVATE_KEY }}
     - uses: actions/checkout@v6
       with:
-        repository: ${{ env.REPOSITORY_OWNER}}/${{ env.ETOS_REPOSITORY }}
+        repository: ${{ env.REPOSITORY_OWNER }}/${{ env.ETOS_REPOSITORY }}
         token: ${{ steps.generate-token.outputs.token }}
     - name: Update manifests
       uses: fjogeleit/yaml-update-action@main
