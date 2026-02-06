@@ -202,7 +202,7 @@ async def _start(etos: StartEtosRequest, span: Span, ctx: otel_context.Context) 
     LOGGER.info("Event published started successfully.")
     LOGGER.info("Publish TERCC event.")
     try:
-        event = etos_library.events.send(tercc, links, data)
+        event = etos_library.events.send(tercc, links, data, ctx=ctx)
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
     finally:
         if not etos_library.debug.disable_sending_events:
