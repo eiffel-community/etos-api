@@ -38,14 +38,16 @@ jobs:
         # Use Docker `latest` tag convention
         [ "$VERSION" == "$MAIN_BRANCH" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
         echo VERSION=$VERSION
-        echo "image=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
+        echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}
-        echo "Pushing image ${{ steps.image.outputs.image }}"
-        docker push ${{ steps.image.outputs.image }}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
+        docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
       apiImage: ${{ steps.image.outputs.image }}
+      apiVersion: ${{ steps.image.outputs.version }}
   build-sse:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
@@ -70,14 +72,16 @@ jobs:
         # Use Docker `latest` tag convention
         [ "$VERSION" == "$MAIN_BRANCH" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
         echo VERSION=$VERSION
-        echo "image=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
+        echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}
-        echo "Pushing image ${{ steps.image.outputs.image }}"
-        docker push ${{ steps.image.outputs.image }}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
+        docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
       sseImage: ${{ steps.image.outputs.image }}
+      sseVersion: ${{ steps.image.outputs.version }}
   build-keys:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
@@ -102,14 +106,16 @@ jobs:
         # Use Docker `latest` tag convention
         [ "$VERSION" == "$MAIN_BRANCH" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
         echo VERSION=$VERSION
-        echo "image=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
+        echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}
-        echo "Pushing image ${{ steps.image.outputs.image }}"
-        docker push ${{ steps.image.outputs.image }}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
+        docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
       keysImage: ${{ steps.image.outputs.image }}
+      keysVersion: ${{ steps.image.outputs.version }}
   build-logarea:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
@@ -134,14 +140,16 @@ jobs:
         # Use Docker `latest` tag convention
         [ "$VERSION" == "$MAIN_BRANCH" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
         echo VERSION=$VERSION
-        echo "image=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
+        echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}
-        echo "Pushing image ${{ steps.image.outputs.image }}"
-        docker push ${{ steps.image.outputs.image }}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
+        docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
       logareaImage: ${{ steps.image.outputs.image }}
+      logareaVersion: ${{ steps.image.outputs.version }}
   build-iut:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
@@ -166,14 +174,16 @@ jobs:
         # Use Docker `latest` tag convention
         [ "$VERSION" == "$MAIN_BRANCH" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
         echo VERSION=$VERSION
-        echo "image=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
+        echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}
-        echo "Pushing image ${{ steps.image.outputs.image }}"
-        docker push ${{ steps.image.outputs.image }}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
+        docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
       iutImage: ${{ steps.image.outputs.image }}
+      iutVersion: ${{ steps.image.outputs.version }}
   build-executionspace:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
@@ -198,14 +208,16 @@ jobs:
         # Use Docker `latest` tag convention
         [ "$VERSION" == "$MAIN_BRANCH" ] && VERSION=$(echo ${{ github.sha }} | cut -c1-8)
         echo VERSION=$VERSION
-        echo "image=$IMAGE_ID:$VERSION" >> $GITHUB_OUTPUT
+        echo "image=$IMAGE_ID" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}
-        echo "Pushing image ${{ steps.image.outputs.image }}"
-        docker push ${{ steps.image.outputs.image }}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
+        docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
       executionSpaceImage: ${{ steps.image.outputs.image }}
+      executionSpaceVersion: ${{ steps.image.outputs.version }}
   run-update-etos-defaults:
     # We only update API, SSE and LogArea since those are the only ones that
     # are automatically deployed by the ETOS cluster controller.
@@ -214,5 +226,8 @@ jobs:
     secrets: inherit
     with:
       api-image: ${{ needs.build-api.outputs.apiImage }}
+      api-version: ${{ needs.build-api.outputs.apiVersion }}
       sse-image: ${{ needs.build-sse.outputs.sseImage }}
+      sse-version: ${{ needs.build-sse.outputs.sseVersion }}
       logarea-image: ${{ needs.build-logarea.outputs.logareaImage }}
+      logarea-version: ${{ needs.build-logarea.outputs.logareaVersion }}

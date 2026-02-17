@@ -7,12 +7,24 @@ on:
         description: 'ETOS API image'
         required: true
         type: string
+      api-version:
+        description: 'ETOS API version'
+        required: true
+        type: string
       sse-image:
         description: 'ETOS SSE image'
         required: true
         type: string
+      sse-version:
+        description: 'ETOS SSE version'
+        required: true
+        type: string
       logarea-image:
         description: 'ETOS LogArea image'
+        required: true
+        type: string
+      logarea-version:
+        description: 'ETOS LogArea version'
         required: true
         type: string
 
@@ -61,14 +73,17 @@ jobs:
         token: ${{ steps.generate-token.outputs.token }}
         changes: |
           {
-            "config/crd/defaults/api.yaml": {
-              ".[0].value": "${{ inputs.api-image }}"
+            "defaults/api.yaml": {
+              ".image": "${{ inputs.api-image }}",
+              ".version": "${{ inputs.api-version }}"
             },
-            "config/crd/defaults/sse.yaml": {
-              ".[0].value": "${{ inputs.sse-image }}"
+            "defaults/sse.yaml": {
+              ".image": "${{ inputs.sse-image }}",
+              ".version": "${{ inputs.sse-version }}"
             },
-            "config/crd/defaults/logarea.yaml": {
-              ".[0].value": "${{ inputs.logarea-image }}"
+            "defaults/log_area.yaml": {
+              ".image": "${{ inputs.logarea-image }}"
+              ".version": "${{ inputs.logarea-version }}"
             }
           }
     - name: Create Pull Request
@@ -83,9 +98,9 @@ jobs:
 
         Changes included:
 
-        - ETOS API: ${{ inputs.api-image }}\n
-        - ETOS SSE: ${{ inputs.sse-image }}\n
-        - ETOS LogArea: ${{ inputs.logarea-image }}"
+        - ETOS API: ${{ inputs.api-image }}:${{ inputs.api-version }}\n
+        - ETOS SSE: ${{ inputs.sse-image }}:${{ inputs.sse-version }}\n
+        - ETOS LogArea: ${{ inputs.logarea-image }}:${{ inputs.logarea-version }}"
         sign-commits: true
         branch: "update-etos-api-${{ github.run_id }}"
         labels: automated-pr, dependencies, etos-api
