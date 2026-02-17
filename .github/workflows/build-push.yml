@@ -42,7 +42,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version}}
         echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
         docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
@@ -76,7 +76,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version}}
         echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
         docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
@@ -110,7 +110,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version}}
         echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
         docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
@@ -144,7 +144,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version}}
         echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
         docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
@@ -178,7 +178,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version}}
         echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
         docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
@@ -212,7 +212,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     - name: Push app image
       run: |
-        docker tag image ${{ steps.image.outputs.image }}:${{ steps.iamge.outputs.version}}
+        docker tag image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version}}
         echo "Pushing image ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}"
         docker push ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
     outputs:
