@@ -82,7 +82,7 @@ jobs:
               ".version": "${{ inputs.sse-version }}"
             },
             "defaults/log_area.yaml": {
-              ".image": "${{ inputs.logarea-image }}"
+              ".image": "${{ inputs.logarea-image }}",
               ".version": "${{ inputs.logarea-version }}"
             }
           }
