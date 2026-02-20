@@ -23,16 +23,17 @@ from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
 from fastapi import FastAPI, HTTPException
-from starlette.responses import RedirectResponse, Response
 from kubernetes import client
 from opentelemetry import trace
 from opentelemetry.trace import Span
+from starlette.responses import RedirectResponse, Response
 
 from etos_api.library.environment import Configuration, configure_testrun
+from etos_api.library.metrics import OPERATIONS, REQUEST_TIME, REQUESTS_TOTAL
 from etos_api.library.utilities import sync_to_async
 
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
-from .utilities import wait_for_artifact_created, validate_suite
+from .utilities import validate_suite, wait_for_artifact_created
 
 ETOSv0 = FastAPI(
     title="ETOS",
@@ -40,11 +41,20 @@ ETOSv0 = FastAPI(
     summary="API endpoints for ETOS v0 - I.e. the version before versions",
     root_path_in_servers=False,
 )
+
+API = f"/api/{ETOSv0.version}/etos"
+START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
+# The key {suite_id} is supposed to indicate that this is a path parameter, but
+# we don't want to set the actual value in the metrics label since that would create
+# a high cardinality metric. Therefore we use the literal string "{suite_id}".
+STOP_LABELS = {"endpoint": f"{API}/{{suite_id}}", "operation": OPERATIONS.stop_testrun.name}
+
 TRACER = trace.get_tracer("etos_api.routers.etos.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
+@REQUEST_TIME.labels(**START_LABELS).time()
 @ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
 async def start_etos(etos: StartEtosRequest):
     """Start ETOS execution on post.
@@ -54,10 +64,21 @@ async def start_etos(etos: StartEtosRequest):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _start(etos, span)
+    try:
+        with TRACER.start_as_current_span("start-etos") as span:
+            response = await _start(etos, span)
+            REQUESTS_TOTAL.labels(**START_LABELS, status=200).inc()
+            return response
+    except HTTPException as http_exception:
+        REQUESTS_TOTAL.labels(**START_LABELS, status=http_exception.status_code).inc()
+        raise
+    except Exception:  # pylint:disable=bare-except
+        LOGGER.exception("Unhandled exception occurred")
+        REQUESTS_TOTAL.labels(**START_LABELS, status=500).inc()
+        raise
 
 
+@REQUEST_TIME.labels(**STOP_LABELS).time()
 @ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
 async def abort_etos(suite_id: str):
     """Abort ETOS execution on delete.
@@ -67,8 +88,18 @@ async def abort_etos(suite_id: str):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("abort-etos"):
-        return await _abort(suite_id)
+    try:
+        with TRACER.start_as_current_span("abort-etos"):
+            response = await _abort(suite_id)
+            REQUESTS_TOTAL.labels(**STOP_LABELS, status=200).inc()
+            return response
+    except HTTPException as http_exception:
+        REQUESTS_TOTAL.labels(**STOP_LABELS, status=http_exception.status_code).inc()
+        raise
+    except Exception:  # pylint:disable=bare-except
+        LOGGER.exception("Unhandled exception occurred")
+        REQUESTS_TOTAL.labels(**STOP_LABELS, status=500).inc()
+        raise
 
 
 @ETOSv0.get("/ping", tags=["etos"], status_code=204)
