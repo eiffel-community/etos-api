@@ -38,10 +38,6 @@ from etos_api.library.context_logging import ContextLogging
 from .library.providers.register import RegisterProviders
 from .main import APP
 
-# The API shall not send logs to RabbitMQ as it
-# is too early in the ETOS test run.
-os.environ["ETOS_ENABLE_SENDING_LOGS"] = "false"
-
 try:
     VERSION = version("etos_api")
 except PackageNotFoundError:
