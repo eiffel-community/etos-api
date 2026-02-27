@@ -25,9 +25,9 @@ import (
 	"github.com/sirupsen/logrus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/net"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	watch "k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -43,12 +43,13 @@ var (
 )
 
 type KubernetesExecutor struct {
-	client    *kubernetes.Clientset
-	namespace string
+	client                  *kubernetes.Clientset
+	namespace               string
+	encryptionKeySecretName string
 }
 
 // Kubernetes returns a new Kubernetes executor
-func Kubernetes(namespace string) Executor {
+func Kubernetes(namespace, encryptionKeySecretName string) Executor {
 	config, err := inCluster()
 	if err != nil {
 		config, err = outOfCluster()
@@ -61,8 +62,9 @@ func Kubernetes(namespace string) Executor {
 		panic(err)
 	}
 	return &KubernetesExecutor{
-		client:    client,
-		namespace: namespace,
+		client:                  client,
+		namespace:               namespace,
+		encryptionKeySecretName: encryptionKeySecretName,
 	}
 }
 
@@ -119,7 +121,7 @@ func (k KubernetesExecutor) Start(ctx context.Context, logger *logrus.Entry, exe
 								{
 									SecretRef: &corev1.SecretEnvSource{
 										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "etos-encryption-key",
+											Name: k.encryptionKeySecretName,
 										},
 									},
 								},
