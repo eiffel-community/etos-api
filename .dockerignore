@@ -1,4 +1,19 @@
+# Common files
 .DS_Store
 *.pyc
 *.py~
 *.py#
+*.log
+*.env
+*.coveragerc
+*.coverage
+# Common unnecessary directories
+**/.github/*
+**/.venv/*
+**/.vscode/*
+**/.ruff_cache/*
+**/.mypy_cache/*
+**/.tox/*
+**/docs/*
+**/build/*
+**/dist/*

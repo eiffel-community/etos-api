@@ -1,6 +1,8 @@
 FROM python:3.13-trixie AS build
 
-COPY . /src
+COPY .git /src/.git
+COPY .gitignore /src/.gitignore
+COPY python /src/python
 WORKDIR /src/python
 RUN pip install --no-cache-dir build==1.3.0 && python3 -m build
 
