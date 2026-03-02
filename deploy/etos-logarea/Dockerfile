@@ -1,7 +1,22 @@
 FROM golang:1.22-alpine AS build
 WORKDIR /tmp/logarea
-COPY --exclude=**/python/* . .
-RUN apk add --no-cache make=4.4.1-r2 git=2.47.3-r0 && make logarea
+
+# Cache dependencies early
+RUN apk add --no-cache make=4.4.1-r2 git=2.47.3-r0
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+# Only copy what's needed for building the binary to speed up the build.
+# The more likely to change is placed at the bottom so that the cache is
+# not invalidated too early.
+COPY Makefile Makefile
+COPY cmd/logarea cmd/logarea
+COPY internal/ internal/
+COPY pkg/ pkg/
+COPY .git/ .git/
+
+RUN make logarea
 
 FROM alpine:3.17.3
 ARG TZ
