@@ -37,6 +37,7 @@ func (k Kubernetes) New(db database.Opener, cfg config.ExecutionSpaceConfig) Pro
 			url: fmt.Sprintf("%s/executionspace/v1alpha/executor/kubernetes", cfg.Hostname()),
 			executor: executor.Kubernetes(
 				cfg.ETOSNamespace(),
+				cfg.EncryptionKeySecretName(),
 			),
 			active: &sync.WaitGroup{},
 		},
