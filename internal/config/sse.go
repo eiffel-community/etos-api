@@ -23,18 +23,21 @@ import (
 type SSEConfig interface {
 	Config
 	RabbitMQURI() string
+	RabbitMQStreamName() string
 }
 
 type sseCfg struct {
 	Config
-	rabbitmqURI string
+	rabbitmqURI        string
+	rabbitmqStreamName string
 }
 
 // NewSSEConfig creates a sse config interface based on input parameters or environment variables.
 func NewSSEConfig() SSEConfig {
 	var conf sseCfg
 
-	flag.StringVar(&conf.rabbitmqURI, "rabbitmquri", os.Getenv("ETOS_RABBITMQ_URI"), "URI to the RabbitMQ ")
+	flag.StringVar(&conf.rabbitmqURI, "rabbitmquri", os.Getenv("ETOS_RABBITMQ_URI"), "URI to the RabbitMQ")
+	flag.StringVar(&conf.rabbitmqStreamName, "rabbitmqstreamname", os.Getenv("ETOS_RABBITMQ_STREAM_NAME"), "Stream name to use with RabbitMQ.")
 	base := load()
 	conf.Config = base
 	flag.Parse()
@@ -44,4 +47,9 @@ func NewSSEConfig() SSEConfig {
 // RabbitMQURI returns the RabbitMQ URI.
 func (c *sseCfg) RabbitMQURI() string {
 	return c.rabbitmqURI
+}
+
+// RabbitMQStreamName returns the stream name to use with RabbitMQ.
+func (c *sseCfg) RabbitMQStreamName() string {
+	return c.rabbitmqStreamName
 }
