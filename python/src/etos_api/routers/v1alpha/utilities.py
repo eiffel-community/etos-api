@@ -160,7 +160,7 @@ async def recipes_from_tests(tests: list[dict]) -> list[dict]:
                     },
                     {
                         "key": "EXECUTE",
-                        "value": test["execution"]["execute"],
+                        "value": test["execution"].get("execute", []),
                     },
                     {
                         "key": "CHECKOUT",
