@@ -20,30 +20,25 @@ import os
 from uuid import uuid4
 
 from etos_lib import ETOS
-from etos_lib.kubernetes.schemas.testrun import (
-    TestRun as TestRunSchema,
-    TestRunSpec,
-    Providers,
-    Image,
-    Metadata,
-    Retention,
-    TestRunner,
-)
-from etos_lib.kubernetes import TestRun, Environment, Kubernetes
+from etos_lib.kubernetes import Environment, Kubernetes, TestRun
+from etos_lib.kubernetes.schemas.testrun import Image, Metadata, Providers, Retention
+from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema
+from etos_lib.kubernetes.schemas.testrun import TestRunner, TestRunSpec
 from fastapi import FastAPI, HTTPException
-from starlette.responses import Response
-from opentelemetry import trace, context
+from opentelemetry import context, trace
 from opentelemetry.propagate import inject
 from opentelemetry.trace import Span
+from starlette.responses import Response
 
+from etos_api.library.metrics import OPERATIONS, REQUEST_TIME, REQUESTS_TOTAL
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .utilities import (
-    wait_for_artifact_created,
-    download_suite,
-    validate_suite,
     convert_to_rfc1123,
+    download_suite,
     recipes_from_tests,
+    validate_suite,
+    wait_for_artifact_created,
 )
 
 ETOSv1Alpha = FastAPI(
@@ -52,11 +47,24 @@ ETOSv1Alpha = FastAPI(
     summary="API endpoints for ETOS v1 Alpha",
     root_path_in_servers=False,
 )
+
+API = f"/api/{ETOSv1Alpha.version}/testrun"
+START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
+# The key {suite_id} is supposed to indicate that this is a path parameter, but
+# we don't want to set the actual value in the metrics label since that would create
+# a high cardinality metric. Therefore we use the literal string "{suite_id}".
+STOP_LABELS = {"endpoint": f"{API}/{{suite_id}}", "operation": OPERATIONS.stop_testrun.name}
+SUBSUITE_LABELS = {
+    "endpoint": f"{API}/{{suite_id}}",
+    "operation": OPERATIONS.get_subsuite.name,
+}
+
 TRACER = trace.get_tracer("etos_api.routers.testrun.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
+@REQUEST_TIME.labels(**START_LABELS).time()
 @ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
 async def start_testrun(etos: StartTestrunRequest):
     """Start ETOS testrun on post.
@@ -66,10 +74,21 @@ async def start_testrun(etos: StartTestrunRequest):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _create_testrun(etos, span)
+    try:
+        with TRACER.start_as_current_span("start-etos") as span:
+            response = await _create_testrun(etos, span)
+            REQUESTS_TOTAL.labels(**START_LABELS, status=200).inc()
+            return response
+    except HTTPException as http_exception:
+        REQUESTS_TOTAL.labels(**START_LABELS, status=http_exception.status_code).inc()
+        raise
+    except Exception:  # pylint:disable=bare-except
+        LOGGER.exception("Unhandled exception occurred")
+        REQUESTS_TOTAL.labels(**START_LABELS, status=500).inc()
+        raise
 
 
+@REQUEST_TIME.labels(**STOP_LABELS).time()
 @ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
 async def abort_testrun(suite_id: str):
     """Abort ETOS testrun on delete.
@@ -79,10 +98,24 @@ async def abort_testrun(suite_id: str):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("abort-etos"):
-        return await _abort(suite_id)
+    try:
+        with TRACER.start_as_current_span("abort-etos"):
+            response = await _abort(suite_id)
+            REQUESTS_TOTAL.labels(**STOP_LABELS, status=200).inc()
+            return response
+    except HTTPException as http_exception:
+        REQUESTS_TOTAL.labels(**STOP_LABELS, status=http_exception.status_code).inc()
+        raise
+    except Exception:  # pylint:disable=bare-except
+        LOGGER.exception("Unhandled exception occurred")
+        REQUESTS_TOTAL.labels(**STOP_LABELS, status=500).inc()
+        raise
 
 
+# The key {suite_id} is supposed to indicate that this is a path parameter, but
+# we don't want to set the actual value in the metrics label since that would create
+# a high cardinality metric. Therefore we use the literal string "{suite_id}".
+@REQUEST_TIME.labels(**SUBSUITE_LABELS).time()
 @ETOSv1Alpha.get("/testrun/{sub_suite_id}", tags=["etos"])
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
@@ -90,14 +123,23 @@ async def get_subsuite(sub_suite_id: str) -> dict:
     :param sub_suite_id: The name of the Environment kubernetes resource.
     :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
-    environment_client = Environment(Kubernetes())
-    environment_resource = environment_client.get(sub_suite_id)
-    if not environment_resource:
-        raise HTTPException(404, "Failed to get environment")
-    environment_spec = environment_resource.to_dict().get("spec", {})
-    recipes = await recipes_from_tests(environment_spec["recipes"])
-    environment_spec["recipes"] = recipes
-    return environment_spec
+    try:
+        environment_client = Environment(Kubernetes())
+        environment_resource = environment_client.get(sub_suite_id)
+        if not environment_resource:
+            raise HTTPException(404, "Failed to get environment")
+        environment_spec = environment_resource.to_dict().get("spec", {})
+        recipes = await recipes_from_tests(environment_spec["recipes"])
+        environment_spec["recipes"] = recipes
+        REQUESTS_TOTAL.labels(**SUBSUITE_LABELS, status=200).inc()
+        return environment_spec
+    except HTTPException as http_exception:
+        REQUESTS_TOTAL.labels(**SUBSUITE_LABELS, status=http_exception.status_code).inc()
+        raise
+    except Exception:  # pylint:disable=bare-except
+        LOGGER.exception("Unhandled exception occurred")
+        REQUESTS_TOTAL.labels(**SUBSUITE_LABELS, status=500).inc()
+        raise
 
 
 @ETOSv1Alpha.get("/ping", tags=["etos"], status_code=204)
