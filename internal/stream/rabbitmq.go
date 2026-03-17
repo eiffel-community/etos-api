@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
@@ -178,10 +179,5 @@ func (s *RabbitMQStream) postFilter(message *amqp.Message) bool {
 	eventType := message.ApplicationProperties["type"]
 	eventMeta := message.ApplicationProperties["meta"]
 	name := fmt.Sprintf("%s.%s.%s", identifier, eventType, eventMeta)
-	for _, filter := range s.filter {
-		if name == filter {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s.filter, name)
 }
