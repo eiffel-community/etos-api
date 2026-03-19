@@ -33,7 +33,6 @@ class ContextLogging(logging.Logger):
     get for each logging method called.
     """
 
-    # Default identifier is 'Unknown' which is ignored by the ETOS internal messagebus.
     identifier = ContextVar("identifier")
 
     def critical(self, msg, *args, **kwargs):
@@ -41,7 +40,7 @@ class ContextLogging(logging.Logger):
 
         For documentation read :obj:`logging.Logger.critical`
         """
-        FORMAT_CONFIG.identifier = self.identifier.get("Unknown")  # Default=Unknown
+        FORMAT_CONFIG.identifier = self.identifier.get("Main")  # Default=Main
         return super().critical(msg, *args, **kwargs)
 
     def error(self, msg, *args, **kwargs):
@@ -49,7 +48,7 @@ class ContextLogging(logging.Logger):
 
         For documentation read :obj:`logging.Logger.error`
         """
-        FORMAT_CONFIG.identifier = self.identifier.get("Unknown")  # Default=Unknown
+        FORMAT_CONFIG.identifier = self.identifier.get("Main")  # Default=Main
         return super().error(msg, *args, **kwargs)
 
     def warning(self, msg, *args, **kwargs):
@@ -57,7 +56,7 @@ class ContextLogging(logging.Logger):
 
         For documentation read :obj:`logging.Logger.warning`
         """
-        FORMAT_CONFIG.identifier = self.identifier.get("Unknown")  # Default=Unknown
+        FORMAT_CONFIG.identifier = self.identifier.get("Main")  # Default=Main
         return super().warning(msg, *args, **kwargs)
 
     def info(self, msg, *args, **kwargs):
@@ -65,7 +64,7 @@ class ContextLogging(logging.Logger):
 
         For documentation read :obj:`logging.Logger.info`
         """
-        FORMAT_CONFIG.identifier = self.identifier.get("Unknown")  # Default=Unknown
+        FORMAT_CONFIG.identifier = self.identifier.get("Main")  # Default=Main
         return super().info(msg, *args, **kwargs)
 
     def debug(self, msg, *args, **kwargs):
@@ -73,7 +72,7 @@ class ContextLogging(logging.Logger):
 
         For documentation read :obj:`logging.Logger.debug`
         """
-        FORMAT_CONFIG.identifier = self.identifier.get("Unknown")  # Default=Unknown
+        FORMAT_CONFIG.identifier = self.identifier.get("Main")  # Default=Main
         return super().debug(msg, *args, **kwargs)
 
 
