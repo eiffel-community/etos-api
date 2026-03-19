@@ -86,6 +86,7 @@ func TestMiddleware(t *testing.T) {
 	priv, pub, err := test.NewKeys()
 	assert.NoError(t, err)
 	authorizer, err := NewAuthorizer(pub, priv)
+	assert.NoError(t, err)
 
 	tests := []struct {
 		name           string

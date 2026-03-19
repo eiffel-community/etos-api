@@ -61,7 +61,7 @@ func NewAuthorizer(pub, priv []byte) (*Authorizer, error) {
 // NewToken generates a new JWT for an identifier.
 func (a Authorizer) NewToken(identifier string, tokenScope scope.Scope, expire time.Time) (string, error) {
 	if a.signingKey == nil {
-		return "", errors.New("a private key must be provided to the authorizer to create new tokens.")
+		return "", errors.New("a private key must be provided to the authorizer to create new tokens")
 	}
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodEdDSA,
