@@ -25,7 +25,6 @@ import (
 	"time"
 
 	auth "github.com/eiffel-community/etos-api/internal/authorization"
-	"github.com/eiffel-community/etos-api/internal/authorization/scope"
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -76,8 +75,8 @@ func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer 
 func (a Application) LoadRoutes(router *httprouter.Router) {
 	handler := &Handler{a.logger, a.cfg, a.ctx, a.streamer}
 	router.GET("/sse/v2alpha/selftest/ping", handler.Selftest)
-	router.GET("/sse/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
-	router.POST("/sse/v2alpha/stream/:identifier", a.authorizer.Middleware(scope.DefineSSE, handler.CreateStream))
+	// router.GET("/sse/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
+	router.GET("/sse/v2alpha/events/:identifier", handler.GetEvents)
 }
 
 // Selftest is a handler to just return 204.
@@ -148,36 +147,11 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 				logger.WithError(err).Error("failed to parse SSE event")
 				continue
 			}
-			// TODO: https://github.com/eiffel-community/etos/issues/299
-			if event.JSONData == nil {
-				event = events.Event{
-					Data:  string(msg),
-					Event: "message",
-				}
-			}
 			event.ID = counter
 			ch <- event
 			counter++
 		}
 	}
-}
-
-// CreateStream creates a new RabbitMQ stream for use with the sse events stream.
-func (h Handler) CreateStream(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	identifier := ps.ByName("identifier")
-	// Making it possible for us to correlate logs to a specific connection
-	logger := h.logger.WithField("identifier", identifier)
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-
-	err := h.streamer.CreateStream(r.Context(), logger, identifier)
-	if err != nil {
-		logger.WithError(err).Error("failed to create a rabbitmq stream")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusCreated)
 }
 
 // GetEvents is an endpoint for streaming events and logs from ETOS.
