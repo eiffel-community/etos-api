@@ -25,6 +25,7 @@ import (
 	"time"
 
 	auth "github.com/eiffel-community/etos-api/internal/authorization"
+	"github.com/eiffel-community/etos-api/internal/authorization/scope"
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -75,8 +76,7 @@ func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer 
 func (a Application) LoadRoutes(router *httprouter.Router) {
 	handler := &Handler{a.logger, a.cfg, a.ctx, a.streamer}
 	router.GET("/sse/v2alpha/selftest/ping", handler.Selftest)
-	// router.GET("/sse/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
-	router.GET("/sse/v2alpha/events/:identifier", handler.GetEvents)
+	router.GET("/sse/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
 }
 
 // Selftest is a handler to just return 204.
