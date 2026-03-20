@@ -24,7 +24,6 @@ import (
 	"syscall"
 	"time"
 
-	auth "github.com/eiffel-community/etos-api/internal/authorization"
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/logging"
 	"github.com/eiffel-community/etos-api/internal/server"
@@ -71,36 +70,29 @@ func main() {
 	v1SSE := v1.New(cfg, log, ctx)
 	defer v1SSE.Close()
 
-	pub, err := cfg.PublicKey()
+	var app *httprouter.Router
+
+	// SSEv2
+	var streamer stream.Streamer
+	if cfg.RabbitMQURI() != "" {
+		if cfg.RabbitMQStreamName() == "" {
+			log.Fatal("ETOS_RABBITMQ_STREAM_NAME must be set for the SSE server to work.")
+		}
+		log.Infof("Starting up a RabbitMQStreamer with stream name: %s", cfg.RabbitMQStreamName())
+		streamer, err = stream.NewRabbitMQStreamer(*rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log, cfg.RabbitMQStreamName())
+		if err := streamer.CreateStream(ctx, log, cfg.RabbitMQStreamName()); err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		log.Warning("RabbitMQURI is not set, defaulting to FileStreamer")
+		streamer, err = stream.NewFileStreamer(100*time.Millisecond, log)
+	}
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	var app *httprouter.Router
-	// Only load v2alpha if a public key exists.
-	if pub != nil {
-		authorizer, err := auth.NewAuthorizer(pub, nil)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-
-		var streamer stream.Streamer
-		if cfg.RabbitMQURI() != "" {
-			log.Info("Starting up a RabbitMQStreamer")
-			streamer, err = stream.NewRabbitMQStreamer(*rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log)
-		} else {
-			log.Warning("RabbitMQURI is not set, defaulting to FileStreamer")
-			streamer, err = stream.NewFileStreamer(100*time.Millisecond, log)
-		}
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		v2AlphaSSE := v2alpha.New(ctx, cfg, log, streamer, authorizer)
-		defer v2AlphaSSE.Close()
-		app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
-	} else {
-		log.Warning("Public key does not exist, won't enable v2alpha endpoint")
-		app = application.New(v1AlphaSSE, v1SSE)
-	}
+	v2AlphaSSE := v2alpha.New(ctx, cfg, log, streamer)
+	defer v2AlphaSSE.Close()
+	app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
 
 	srv := server.NewWebService(cfg, log, app)
 
