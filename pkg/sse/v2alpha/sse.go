@@ -24,8 +24,6 @@ import (
 	"strings"
 	"time"
 
-	auth "github.com/eiffel-community/etos-api/internal/authorization"
-	"github.com/eiffel-community/etos-api/internal/authorization/scope"
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -38,12 +36,11 @@ import (
 const pingInterval = 15 * time.Second
 
 type Application struct {
-	logger     *logrus.Entry
-	cfg        config.SSEConfig
-	ctx        context.Context
-	cancel     context.CancelFunc
-	streamer   stream.Streamer
-	authorizer *auth.Authorizer
+	logger   *logrus.Entry
+	cfg      config.SSEConfig
+	ctx      context.Context
+	cancel   context.CancelFunc
+	streamer stream.Streamer
 }
 
 type Handler struct {
@@ -60,15 +57,14 @@ func (a *Application) Close() {
 }
 
 // New returns a new Application object/struct.
-func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer stream.Streamer, authorizer *auth.Authorizer) application.Application {
+func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer stream.Streamer) application.Application {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Application{
-		logger:     log,
-		cfg:        cfg,
-		ctx:        ctx,
-		cancel:     cancel,
-		streamer:   streamer,
-		authorizer: authorizer,
+		logger:   log,
+		cfg:      cfg,
+		ctx:      ctx,
+		cancel:   cancel,
+		streamer: streamer,
 	}
 }
 
@@ -76,7 +72,7 @@ func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer 
 func (a Application) LoadRoutes(router *httprouter.Router) {
 	handler := &Handler{a.logger, a.cfg, a.ctx, a.streamer}
 	router.GET("/sse/v2alpha/selftest/ping", handler.Selftest)
-	router.GET("/sse/v2alpha/events/:identifier", a.authorizer.Middleware(scope.StreamSSE, handler.GetEvents))
+	router.GET("/sse/v2alpha/events/:identifier", handler.GetEvents)
 }
 
 // Selftest is a handler to just return 204.
