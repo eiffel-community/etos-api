@@ -15,6 +15,7 @@
 # limitations under the License.
 """ETOS opentelemetry helpers."""
 
+import logging
 from typing import Annotated
 
 from fastapi import Header
@@ -37,6 +38,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from pydantic import BaseModel
+
+LOGGER = logging.getLogger(__name__)
 
 
 def setup_opentelemetry(app, version: str) -> Resource:
@@ -77,4 +80,6 @@ class OTELHeaders(BaseModel):
 
 def context(headers: Annotated[OTELHeaders, Header()]) -> otel_context.Context:
     """Extract OpenTelemetry context from headers."""
-    return extract(headers.model_dump(), context=otel_context.get_current())
+    ctx = extract(headers.model_dump(), context=otel_context.get_current())
+    LOGGER.debug("Extracted context from headers: %r", ctx)
+    return ctx
