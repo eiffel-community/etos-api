@@ -31,6 +31,7 @@ type ExecutionSpaceConfig interface {
 	RabbitMQHookURL() string
 	RabbitMQHookExchangeName() string
 	EiffelGoerURL() string
+	EncryptionKeySecretName() string
 }
 
 // executionSpaceCfg implements the ExecutionSpaceConfig interface.
@@ -42,6 +43,7 @@ type executionSpaceCfg struct {
 	rabbitmqHookURL           string
 	rabbitmqHookExchange      string
 	eiffelGoerURL             string
+	encryptionKeySecretName   string
 }
 
 // NewExecutionSpaceConfig creates an executio nspace config interface based on input parameters or environment variables.
@@ -64,6 +66,7 @@ func NewExecutionSpaceConfig() ExecutionSpaceConfig {
 	flag.StringVar(&conf.rabbitmqHookURL, "rabbitmq_hook_url", os.Getenv("ETOS_RABBITMQ_URL"), "URL to the ETOS rabbitmq for logs")
 	flag.StringVar(&conf.rabbitmqHookExchange, "rabbitmq_hook_exchange", os.Getenv("ETOS_RABBITMQ_EXCHANGE"), "Exchange to use for the ETOS rabbitmq for logs")
 	flag.StringVar(&conf.eiffelGoerURL, "event_repository_host", os.Getenv("EIFFEL_GOER_URL"), "Event repository URL used for Eiffel event lookup")
+	flag.StringVar(&conf.encryptionKeySecretName, "encryption_key_secret_name", EnvOrDefault("ENCRYPTION_KEY_SECRET_NAME", "etos-encryption-key"), "Secret name in Kubernetes where the encryption key is stored")
 	base := load()
 	flag.Parse()
 	conf.Config = base
@@ -99,4 +102,9 @@ func (c *executionSpaceCfg) EiffelGoerURL() string {
 // RabbitMQHookExchangeName returns the rabbitmq exchange name used for ETOS logs
 func (c *executionSpaceCfg) RabbitMQHookExchangeName() string {
 	return c.rabbitmqHookExchange
+}
+
+// EncryptionKeySecretName returns the name of the Kubernetes secret where the encryption key is stored
+func (c *executionSpaceCfg) EncryptionKeySecretName() string {
+	return c.encryptionKeySecretName
 }

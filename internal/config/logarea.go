@@ -15,15 +15,49 @@
 // limitations under the License.
 package config
 
-import "flag"
+import (
+	"flag"
+	"time"
+
+	"github.com/sirupsen/logrus"
+)
 
 type LogAreaConfig interface {
 	Config
+	UploadPath() string
+	Retention() time.Duration
+}
+
+// logAreaCfg implements the LogAreaConfig interface
+type logAreaCfg struct {
+	Config
+	uploadPath string
+	retention  time.Duration
 }
 
 // NewLogAreaConfig creates a log area config interface based on input parameters or environment variables.
 func NewLogAreaConfig() LogAreaConfig {
-	cfg := load()
+	var conf logAreaCfg
+	defaultRetention, err := time.ParseDuration(EnvOrDefault("RETENTION", "24h"))
+	if err != nil {
+		logrus.Panic(err)
+	}
+
+	flag.StringVar(&conf.uploadPath, "uploadpath", EnvOrDefault("UPLOAD_PATH", "/tmp/files"), "Path to upload files to.")
+	flag.DurationVar(&conf.retention, "retention", defaultRetention, "Which retention should configured for files")
+	base := load()
 	flag.Parse()
-	return cfg
+	conf.Config = base
+
+	return &conf
+}
+
+// UploadPath is the local path where all files and directories uploaded should be stored.
+func (c logAreaCfg) UploadPath() string {
+	return c.uploadPath
+}
+
+// Retention returns the file retention time.
+func (c logAreaCfg) Retention() time.Duration {
+	return c.retention
 }
