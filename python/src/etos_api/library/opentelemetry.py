@@ -18,7 +18,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import Header
+from fastapi import FastAPI, Header
 from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
@@ -42,7 +42,7 @@ from pydantic import BaseModel
 LOGGER = logging.getLogger(__name__)
 
 
-def setup_opentelemetry(app, version: str) -> Resource:
+def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
     """Set up OpenTelemetry for ETOS API."""
     otel_resource = Resource.create(
         {
