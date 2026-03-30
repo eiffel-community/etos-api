@@ -220,7 +220,7 @@ async def _start(etos: StartEtosRequest, span: Span, ctx: otel_context.Context) 
 
 
 async def _abort(suite_id: str) -> dict:
-    """Abort an ETOS test suite execution."""
+    """Abort an ETOS v0 test suite execution."""
     kubernetes = Kubernetes()
 
     batch_api = client.BatchV1Api()
@@ -229,23 +229,11 @@ async def _abort(suite_id: str) -> dict:
     delete_options = client.V1DeleteOptions(
         propagation_policy="Background"  # asynchronous cascading deletion
     )
-    # trying different labels for backwards compatibility:
-    # - namespaced labels: ETOS v1alpha+
-    # - app/id: ETOS v0 legacy
-    label_pairs = (
-        ("app.kubernetes.io/name", "etos.eiffel-community.github.io/id"),
-        ("app", "id"),
-    )
     for job in jobs.items:
-        job_found = False
-        for app_label, id_label in label_pairs:
-            if (
-                job.metadata.labels.get(app_label) == "suite-runner"
-                and job.metadata.labels.get(id_label) == suite_id
-            ):
-                job_found = True
-                break
-        if job_found:
+        if (
+            job.metadata.labels.get("app") == "suite-runner"
+            and job.metadata.labels.get("id") == suite_id
+        ):
             batch_api.delete_namespaced_job(
                 name=job.metadata.name, namespace=kubernetes.namespace, body=delete_options
             )
