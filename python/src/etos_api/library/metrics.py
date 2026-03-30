@@ -16,6 +16,7 @@
 """ETOS API metrics."""
 
 from enum import Enum
+from functools import wraps
 from logging import Logger
 from typing import Callable
 
@@ -48,6 +49,7 @@ def COUNT_REQUESTS(labels: dict, logger: Logger):  # pylint:disable=invalid-name
     """Count number of requests to server using the REQUESTS_TOTAL counter."""
 
     def decorator(func: Callable):
+        @wraps(func)
         async def wrapper(*args, **kwargs):
             try:
                 response = await func(*args, **kwargs)
