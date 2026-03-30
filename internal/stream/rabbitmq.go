@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 	"time"
 
@@ -43,7 +42,7 @@ type RabbitMQStreamer struct {
 func NewRabbitMQStreamer(options stream.EnvironmentOptions, logger *logrus.Entry, streamName string) (Streamer, error) {
 	env, err := stream.NewEnvironment(&options)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	return &RabbitMQStreamer{environment: env, logger: logger, streamName: streamName}, err
 }
