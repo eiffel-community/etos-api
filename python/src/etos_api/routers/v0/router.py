@@ -29,7 +29,7 @@ from opentelemetry.trace import Span
 from starlette.responses import RedirectResponse, Response
 
 from etos_api.library.environment import Configuration, configure_testrun
-from etos_api.library.metrics import OPERATIONS, REQUEST_TIME, REQUESTS_TOTAL
+from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
 from etos_api.library.utilities import sync_to_async
 
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
@@ -55,6 +55,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 
 
 @REQUEST_TIME.labels(**START_LABELS).time()
+@COUNT_REQUESTS(START_LABELS, LOGGER)
 @ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
 async def start_etos(etos: StartEtosRequest):
     """Start ETOS execution on post.
@@ -64,21 +65,12 @@ async def start_etos(etos: StartEtosRequest):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    try:
-        with TRACER.start_as_current_span("start-etos") as span:
-            response = await _start(etos, span)
-            REQUESTS_TOTAL.labels(**START_LABELS, status=200).inc()
-            return response
-    except HTTPException as http_exception:
-        REQUESTS_TOTAL.labels(**START_LABELS, status=http_exception.status_code).inc()
-        raise
-    except Exception:  # pylint:disable=bare-except
-        LOGGER.exception("Unhandled exception occurred")
-        REQUESTS_TOTAL.labels(**START_LABELS, status=500).inc()
-        raise
+    with TRACER.start_as_current_span("start-etos") as span:
+        return await _start(etos, span)
 
 
 @REQUEST_TIME.labels(**STOP_LABELS).time()
+@COUNT_REQUESTS(STOP_LABELS, LOGGER)
 @ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
 async def abort_etos(suite_id: str):
     """Abort ETOS execution on delete.
@@ -88,18 +80,8 @@ async def abort_etos(suite_id: str):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    try:
-        with TRACER.start_as_current_span("abort-etos"):
-            response = await _abort(suite_id)
-            REQUESTS_TOTAL.labels(**STOP_LABELS, status=200).inc()
-            return response
-    except HTTPException as http_exception:
-        REQUESTS_TOTAL.labels(**STOP_LABELS, status=http_exception.status_code).inc()
-        raise
-    except Exception:  # pylint:disable=bare-except
-        LOGGER.exception("Unhandled exception occurred")
-        REQUESTS_TOTAL.labels(**STOP_LABELS, status=500).inc()
-        raise
+    with TRACER.start_as_current_span("abort-etos"):
+        return await _abort(suite_id)
 
 
 @ETOSv0.get("/ping", tags=["etos"], status_code=204)

@@ -16,7 +16,10 @@
 """ETOS API metrics."""
 
 from enum import Enum
+from logging import Logger
+from typing import Callable
 
+from fastapi import HTTPException
 from prometheus_client import Counter, Histogram
 
 OPERATIONS = Enum(
@@ -38,3 +41,26 @@ REQUESTS_TOTAL = Counter(
     "Total number of requests",
     ["endpoint", "operation", "status"],
 )
+
+
+# I like the idea of all operations in this file is upper-case.
+def COUNT_REQUESTS(labels: dict, logger: Logger):  # pylint:disable=invalid-name
+    """Count number of requests to server using the REQUESTS_TOTAL counter."""
+
+    def decorator(func: Callable):
+        async def wrapper(*args, **kwargs):
+            try:
+                response = await func(*args, **kwargs)
+                REQUESTS_TOTAL.labels(**labels, status=200).inc()
+                return response
+            except HTTPException as http_exception:
+                REQUESTS_TOTAL.labels(**labels, status=http_exception.status_code).inc()
+                raise
+            except Exception:  # pylint:disable=bare-except
+                logger.exception("Unhandled exception occurred, setting status to 500")
+                REQUESTS_TOTAL.labels(**labels, status=500).inc()
+                raise
+
+        return wrapper
+
+    return decorator

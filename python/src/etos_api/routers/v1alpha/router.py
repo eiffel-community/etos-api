@@ -30,7 +30,7 @@ from opentelemetry.propagate import inject
 from opentelemetry.trace import Span
 from starlette.responses import Response
 
-from etos_api.library.metrics import OPERATIONS, REQUEST_TIME, REQUESTS_TOTAL
+from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .utilities import (
@@ -65,6 +65,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 
 
 @REQUEST_TIME.labels(**START_LABELS).time()
+@COUNT_REQUESTS(START_LABELS, LOGGER)
 @ETOSv1Alpha.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
 async def start_testrun(etos: StartTestrunRequest):
     """Start ETOS testrun on post.
@@ -74,21 +75,12 @@ async def start_testrun(etos: StartTestrunRequest):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    try:
-        with TRACER.start_as_current_span("start-etos") as span:
-            response = await _create_testrun(etos, span)
-            REQUESTS_TOTAL.labels(**START_LABELS, status=200).inc()
-            return response
-    except HTTPException as http_exception:
-        REQUESTS_TOTAL.labels(**START_LABELS, status=http_exception.status_code).inc()
-        raise
-    except Exception:  # pylint:disable=bare-except
-        LOGGER.exception("Unhandled exception occurred")
-        REQUESTS_TOTAL.labels(**START_LABELS, status=500).inc()
-        raise
+    with TRACER.start_as_current_span("start-etos") as span:
+        return await _create_testrun(etos, span)
 
 
 @REQUEST_TIME.labels(**STOP_LABELS).time()
+@COUNT_REQUESTS(STOP_LABELS, LOGGER)
 @ETOSv1Alpha.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
 async def abort_testrun(suite_id: str):
     """Abort ETOS testrun on delete.
@@ -98,24 +90,15 @@ async def abort_testrun(suite_id: str):
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    try:
-        with TRACER.start_as_current_span("abort-etos"):
-            response = await _abort(suite_id)
-            REQUESTS_TOTAL.labels(**STOP_LABELS, status=200).inc()
-            return response
-    except HTTPException as http_exception:
-        REQUESTS_TOTAL.labels(**STOP_LABELS, status=http_exception.status_code).inc()
-        raise
-    except Exception:  # pylint:disable=bare-except
-        LOGGER.exception("Unhandled exception occurred")
-        REQUESTS_TOTAL.labels(**STOP_LABELS, status=500).inc()
-        raise
+    with TRACER.start_as_current_span("abort-etos"):
+        return await _abort(suite_id)
 
 
 # The key {suite_id} is supposed to indicate that this is a path parameter, but
 # we don't want to set the actual value in the metrics label since that would create
 # a high cardinality metric. Therefore we use the literal string "{suite_id}".
 @REQUEST_TIME.labels(**SUBSUITE_LABELS).time()
+@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER)
 @ETOSv1Alpha.get("/testrun/{sub_suite_id}", tags=["etos"])
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
@@ -123,23 +106,14 @@ async def get_subsuite(sub_suite_id: str) -> dict:
     :param sub_suite_id: The name of the Environment kubernetes resource.
     :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
-    try:
-        environment_client = Environment(Kubernetes())
-        environment_resource = environment_client.get(sub_suite_id)
-        if not environment_resource:
-            raise HTTPException(404, "Failed to get environment")
-        environment_spec = environment_resource.to_dict().get("spec", {})
-        recipes = await recipes_from_tests(environment_spec["recipes"])
-        environment_spec["recipes"] = recipes
-        REQUESTS_TOTAL.labels(**SUBSUITE_LABELS, status=200).inc()
-        return environment_spec
-    except HTTPException as http_exception:
-        REQUESTS_TOTAL.labels(**SUBSUITE_LABELS, status=http_exception.status_code).inc()
-        raise
-    except Exception:  # pylint:disable=bare-except
-        LOGGER.exception("Unhandled exception occurred")
-        REQUESTS_TOTAL.labels(**SUBSUITE_LABELS, status=500).inc()
-        raise
+    environment_client = Environment(Kubernetes())
+    environment_resource = environment_client.get(sub_suite_id)
+    if not environment_resource:
+        raise HTTPException(404, "Failed to get environment")
+    environment_spec = environment_resource.to_dict().get("spec", {})
+    recipes = await recipes_from_tests(environment_spec["recipes"])
+    environment_spec["recipes"] = recipes
+    return environment_spec
 
 
 @ETOSv1Alpha.get("/ping", tags=["etos"], status_code=204)
