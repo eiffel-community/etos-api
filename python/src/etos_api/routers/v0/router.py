@@ -47,7 +47,7 @@ ETOSV0 = FastAPI(
     dependencies=[Depends(context)],
 )
 
-API = f"/api/{ETOSv0.version}/etos"
+API = f"/api/{ETOSV0.version}/etos"
 START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
 # The key {suite_id} is supposed to indicate that this is a path parameter, but
 # we don't want to set the actual value in the metrics label since that would create

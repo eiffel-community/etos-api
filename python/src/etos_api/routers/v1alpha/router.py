@@ -27,7 +27,6 @@ from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema
 from etos_lib.kubernetes.schemas.testrun import TestRunner, TestRunSpec
 from fastapi import Depends, FastAPI, HTTPException
 from opentelemetry import baggage as otel_baggage
-from opentelemetry import context
 from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.propagate import inject
@@ -54,7 +53,7 @@ ETOSV1ALPHA = FastAPI(
     dependencies=[Depends(context)],
 )
 
-API = f"/api/{ETOSv1Alpha.version}/testrun"
+API = f"/api/{ETOSV1ALPHA.version}/testrun"
 START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
 # The key {suite_id} is supposed to indicate that this is a path parameter, but
 # we don't want to set the actual value in the metrics label since that would create
