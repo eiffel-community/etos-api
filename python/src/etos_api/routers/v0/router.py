@@ -17,29 +17,34 @@
 
 import logging
 import os
+from typing import Annotated
 from uuid import uuid4
 
 from eiffellib.events import EiffelTestExecutionRecipeCollectionCreatedEvent
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from kubernetes import client
+from opentelemetry import baggage as otel_baggage
+from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.trace import Span
 from starlette.responses import RedirectResponse, Response
 
 from etos_api.library.environment import Configuration, configure_testrun
 from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
+from etos_api.library.opentelemetry import context
 from etos_api.library.utilities import sync_to_async
 
 from .schemas import AbortEtosResponse, StartEtosRequest, StartEtosResponse
 from .utilities import validate_suite, wait_for_artifact_created
 
-ETOSv0 = FastAPI(
+ETOSV0 = FastAPI(
     title="ETOS",
     version="v0",
     summary="API endpoints for ETOS v0 - I.e. the version before versions",
     root_path_in_servers=False,
+    dependencies=[Depends(context)],
 )
 
 API = f"/api/{ETOSv0.version}/etos"
@@ -52,39 +57,47 @@ STOP_LABELS = {"endpoint": f"{API}/{{suite_id}}", "operation": OPERATIONS.stop_t
 TRACER = trace.get_tracer("etos_api.routers.etos.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
+# pylint:disable=too-many-locals,too-many-statements
 
 
 @REQUEST_TIME.labels(**START_LABELS).time()
 @COUNT_REQUESTS(START_LABELS, LOGGER)
-@ETOSv0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
-async def start_etos(etos: StartEtosRequest):
+@ETOSV0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
+async def start_etos(
+    etos: StartEtosRequest,
+    ctx: Annotated[otel_context.Context, Depends(context)],
+) -> dict:
     """Start ETOS execution on post.
 
     :param etos: ETOS pydantic model.
     :type etos: :obj:`etos_api.routers.etos.schemas.StartEtosRequest`
+    :param ctx: OpenTelemetry context with extracted headers.
+    :type ctx: :obj:`opentelemetry.context.Context`
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("start-etos") as span:
-        return await _start(etos, span)
+    with TRACER.start_as_current_span("start-etos", context=ctx) as span:
+        return await _start(etos, span, otel_context.get_current())
 
 
 @REQUEST_TIME.labels(**STOP_LABELS).time()
 @COUNT_REQUESTS(STOP_LABELS, LOGGER)
-@ETOSv0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
-async def abort_etos(suite_id: str):
+@ETOSV0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
+async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]) -> dict:
     """Abort ETOS execution on delete.
 
     :param suite_id: ETOS suite id
     :type suite_id: str
+    :param ctx: OpenTelemetry context with extracted headers.
+    :type ctx: :obj:`opentelemetry.context.Context`
     :return: JSON dictionary with response.
     :rtype: dict
     """
-    with TRACER.start_as_current_span("abort-etos"):
+    with TRACER.start_as_current_span("abort-etos", context=ctx):
         return await _abort(suite_id)
 
 
-@ETOSv0.get("/ping", tags=["etos"], status_code=204)
+@ETOSV0.get("/ping", tags=["etos"], status_code=204)
 async def ping():
     """Ping the ETOS service in order to check if it is up and running.
 
@@ -94,7 +107,7 @@ async def ping():
     return Response(status_code=204)
 
 
-@ETOSv0.get("/selftest/ping")
+@ETOSV0.get("/selftest/ping")
 async def oldping():
     """Ping the ETOS service in order to check if it is up and running.
 
@@ -106,16 +119,20 @@ async def oldping():
     return RedirectResponse("/api/ping")
 
 
-async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=too-many-statements
+async def _start(etos: StartEtosRequest, span: Span, ctx: otel_context.Context) -> dict:
     """Start ETOS execution.
 
     :param etos: ETOS pydantic model.
     :param span: An opentelemetry span for tracing.
+    :param ctx: OpenTelemetry context with extracted headers.
     :return: JSON dictionary with response.
     """
     tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
     LOGGER.identifier.set(tercc.meta.event_id)
     span.set_attribute("etos.id", tercc.meta.event_id)
+    span.set_attribute(
+        "parent_activity", str(etos.parent_activity) if etos.parent_activity else "None"
+    )
 
     LOGGER.info("Validating test suite.")
     span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
@@ -188,6 +205,9 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=
         ) from exception
     LOGGER.info("Environment provider configured.")
 
+    ctx = otel_baggage.set_baggage("testrun_id", tercc.meta.event_id, context=ctx)
+    ctx = otel_baggage.set_baggage("artifact_id", artifact_id, context=ctx)
+
     LOGGER.info("Start event publisher.")
     await sync_to_async(etos_library.start_publisher)
     if not etos_library.debug.disable_sending_events:
@@ -195,7 +215,7 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=
     LOGGER.info("Event published started successfully.")
     LOGGER.info("Publish TERCC event.")
     try:
-        event = etos_library.events.send(tercc, links, data)
+        event = etos_library.events.send(tercc, links, data, ctx=ctx)
         await sync_to_async(etos_library.publisher.wait_for_unpublished_events)
     finally:
         if not etos_library.debug.disable_sending_events:
@@ -213,7 +233,7 @@ async def _start(etos: StartEtosRequest, span: Span) -> dict:  # pylint:disable=
 
 
 async def _abort(suite_id: str) -> dict:
-    """Abort an ETOS test suite execution."""
+    """Abort an ETOS v0 test suite execution."""
     kubernetes = Kubernetes()
 
     batch_api = client.BatchV1Api()
@@ -222,23 +242,11 @@ async def _abort(suite_id: str) -> dict:
     delete_options = client.V1DeleteOptions(
         propagation_policy="Background"  # asynchronous cascading deletion
     )
-    # trying different labels for backwards compatibility:
-    # - namespaced labels: ETOS v1alpha+
-    # - app/id: ETOS v0 legacy
-    label_pairs = (
-        ("app.kubernetes.io/name", "etos.eiffel-community.github.io/id"),
-        ("app", "id"),
-    )
     for job in jobs.items:
-        job_found = False
-        for app_label, id_label in label_pairs:
-            if (
-                job.metadata.labels.get(app_label) == "suite-runner"
-                and job.metadata.labels.get(id_label) == suite_id
-            ):
-                job_found = True
-                break
-        if job_found:
+        if (
+            job.metadata.labels.get("app") == "suite-runner"
+            and job.metadata.labels.get("id") == suite_id
+        ):
             batch_api.delete_namespaced_job(
                 name=job.metadata.name, namespace=kubernetes.namespace, body=delete_options
             )

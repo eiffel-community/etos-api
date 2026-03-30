@@ -66,6 +66,10 @@ func main() {
 	app := application.New(v1AlphaLogArea)
 	srv := server.NewWebService(cfg, log, app)
 
+	r := v1alpha.NewRetentionHandler(ctx, cfg, log)
+	r.Start()
+	defer r.Shutdown()
+
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 

@@ -1,0 +1,106 @@
+name: Update ETOS defaults
+
+on:
+  workflow_call:
+    inputs:
+      api-image:
+        description: 'ETOS API image'
+        required: true
+        type: string
+      api-version:
+        description: 'ETOS API version'
+        required: true
+        type: string
+      sse-image:
+        description: 'ETOS SSE image'
+        required: true
+        type: string
+      sse-version:
+        description: 'ETOS SSE version'
+        required: true
+        type: string
+      logarea-image:
+        description: 'ETOS LogArea image'
+        required: true
+        type: string
+      logarea-version:
+        description: 'ETOS LogArea version'
+        required: true
+        type: string
+
+env:
+  REPOSITORY_OWNER: eiffel-community
+  ETOS_REPOSITORY: etos
+  ETOS_API_REPOSITORY: etos-api
+
+jobs:
+  update-etos-defaults:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Get commit metadata
+      run: |
+        COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+        COMMIT_MESSAGE_HEADER=$(git log -1 --pretty=%B | head -n 1)
+        echo "COMMIT_MESSAGE_HEADER=${COMMIT_MESSAGE_HEADER}" >> $GITHUB_ENV
+        echo "COMMIT=${{ github.sha }}" >> $GITHUB_ENV
+    - name: Get commit message
+      # Newlines are not supported in environment variables directly, so we use a heredoc to set it.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#multiline-strings
+      # Found no way to integrate this in the step above, so it will have to be done in a separate step.
+      run: |
+        {
+          echo 'COMMIT_MESSAGE<<EOF'
+          git log -1 --pretty=%B
+          echo EOF
+        } >> "$GITHUB_ENV"
+    - name: Generate a token
+      id: generate-token
+      uses: actions/create-github-app-token@v2
+      with:
+        owner: ${{ env.REPOSITORY_OWNER }}
+        repositories: ${{ env.ETOS_REPOSITORY }}
+        app-id: ${{ vars.ETOS_PR_APP_ID }}
+        private-key: ${{ secrets.ETOS_PR_APP_PRIVATE_KEY }}
+    - uses: actions/checkout@v6
+      with:
+        repository: ${{ env.REPOSITORY_OWNER }}/${{ env.ETOS_REPOSITORY }}
+        token: ${{ steps.generate-token.outputs.token }}
+    - name: Update manifests
+      uses: fjogeleit/yaml-update-action@main
+      with:
+        commitChange: false
+        token: ${{ steps.generate-token.outputs.token }}
+        changes: |
+          {
+            "defaults/api.yaml": {
+              ".image": "${{ inputs.api-image }}",
+              ".version": "${{ inputs.api-version }}"
+            },
+            "defaults/sse.yaml": {
+              ".image": "${{ inputs.sse-image }}",
+              ".version": "${{ inputs.sse-version }}"
+            },
+            "defaults/log_area.yaml": {
+              ".image": "${{ inputs.logarea-image }}",
+              ".version": "${{ inputs.logarea-version }}"
+            }
+          }
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v8
+      with:
+        token: ${{ steps.generate-token.outputs.token }}
+        commit-message: ${{ env.COMMIT_MESSAGE }}
+        title: "Integrate \"${{ env.COMMIT_MESSAGE_HEADER }}\""
+        body: "Automated update of ETOS images for API, SSE, and LogArea\n
+
+        Commit: https://github.com/${{ env.REPOSITORY_OWNER }}/${{ env.ETOS_API_REPOSITORY }}/commit/${{ env.COMMIT }}\n
+
+        Changes included:
+
+        - ETOS API: ${{ inputs.api-image }}:${{ inputs.api-version }}\n
+        - ETOS SSE: ${{ inputs.sse-image }}:${{ inputs.sse-version }}\n
+        - ETOS LogArea: ${{ inputs.logarea-image }}:${{ inputs.logarea-version }}"
+        sign-commits: true
+        branch: "update-etos-api-${{ github.run_id }}"
+        labels: automated-pr, dependencies, etos-api
