@@ -235,11 +235,6 @@ class Docker:
     async def digest(self, name: str) -> Optional[str]:
         """Get a sha256 digest from an image in an image repository.
 
-        Retries on transient connection errors (e.g. DNS hiccups) up to
-        MAX_RETRIES times with exponential backoff between attempts.
-        The delay follows the same formula as urllib3 Retry used in
-        etos-library: ``BACKOFF_FACTOR * 2 ** (attempt - 1)``.
-
         :param name: The name of the container image.
         :return: The sha256 digest of the container image.
         """
@@ -247,12 +242,24 @@ class Docker:
         base, tag = self.tag(name)
         registry, repo = self.repository(base)
         manifest_url = f"https://{registry}/v2/{repo}/manifests/{tag}"
+        return await self._retry(self._get_digest, name, manifest_url)
 
+    async def _retry(self, func, name: str, *args) -> Optional[str]:
+        """Call *func* with retries and exponential backoff.
+
+        Retries on transient connection errors (e.g. DNS hiccups) up to
+        MAX_RETRIES times.  The delay follows the same formula as urllib3
+        Retry used in etos-library: ``BACKOFF_FACTOR * 2 ** (attempt - 1)``.
+
+        :param func: Async callable to invoke on each attempt.
+        :param name: Image name (used only for logging).
+        :param args: Positional arguments forwarded to *func*.
+        :return: The value returned by *func*, or None after exhausting retries.
+        """
         last_exception = None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                digest = await self._get_digest(manifest_url)
-                return digest
+                return await func(*args)
             except _RETRYABLE_EXCEPTIONS as exception:
                 last_exception = exception
                 self.logger.warning(
@@ -267,11 +274,11 @@ class Docker:
                     self.logger.info("Retrying in %s seconds...", delay)
                     await asyncio.sleep(delay)
 
-        self.logger.error(
-            "All %d attempts to check container image %r failed: %s",
+        self.logger.exception(
+            "All %d attempts to check container image %r failed",
             MAX_RETRIES,
             name,
-            last_exception,
+            exc_info=last_exception,
         )
         return None
 
