@@ -268,6 +268,7 @@ class Docker:
                     attempt,
                     MAX_RETRIES,
                     exception,
+                    exc_info=True,
                 )
                 if attempt < MAX_RETRIES:
                     delay = BACKOFF_FACTOR * (2 ** (attempt - 1))
