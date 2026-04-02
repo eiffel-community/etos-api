@@ -260,6 +260,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
                 logArea=etos.log_area_provider,
             ),
             suites=TestRunSpec.from_tercc(test_suite, etos.dataset),
+            suiteSource=etos.test_suite_url,
         ),
     )
 
