@@ -56,7 +56,7 @@ jobs:
         } >> "$GITHUB_ENV"
     - name: Generate a token
       id: generate-token
-      uses: actions/create-github-app-token@v2
+      uses: actions/create-github-app-token@v3
       with:
         owner: ${{ env.REPOSITORY_OWNER }}
         repositories: ${{ env.ETOS_REPOSITORY }}
@@ -67,7 +67,7 @@ jobs:
         repository: ${{ env.REPOSITORY_OWNER }}/${{ env.ETOS_REPOSITORY }}
         token: ${{ steps.generate-token.outputs.token }}
     - name: Update manifests
-      uses: fjogeleit/yaml-update-action@main
+      uses: fjogeleit/yaml-update-action@v0.16.1
       with:
         commitChange: false
         token: ${{ steps.generate-token.outputs.token }}
