@@ -19,7 +19,7 @@ import asyncio
 import logging
 import time
 from threading import Lock
-from typing import Mapping, Optional
+from typing import Any, Awaitable, Callable, Mapping, Optional
 
 import aiohttp
 
@@ -244,7 +244,12 @@ class Docker:
         manifest_url = f"https://{registry}/v2/{repo}/manifests/{tag}"
         return await self._retry(self._get_digest, name, manifest_url)
 
-    async def _retry(self, func, name: str, *args) -> Optional[str]:
+    async def _retry(
+        self,
+        func: Callable[..., Awaitable[Optional[str]]],
+        name: str,
+        *args: Any,
+    ) -> Optional[str]:
         """Call *func* with retries and exponential backoff.
 
         Retries on transient connection errors (e.g. DNS hiccups) up to
