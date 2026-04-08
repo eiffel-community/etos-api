@@ -24,10 +24,13 @@ import (
 
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
+	"github.com/sethvargo/go-retry"
 	"github.com/sirupsen/logrus"
 )
 
 const IgnoreUnfiltered = false
+const maxRetries = 10
+const retryDelay = 5 * time.Second
 
 // RabbitMQStreamer is a struct representing a single RabbitMQ connection. From a new connection new streams may be created.
 // Normal case is to have a single connection with multiple streams. If multiple connections are needed then multiple
@@ -39,10 +42,18 @@ type RabbitMQStreamer struct {
 }
 
 // NewRabbitMQStreamer creates a new RabbitMQ streamer. Only a single connection should be created.
-func NewRabbitMQStreamer(options stream.EnvironmentOptions, logger *logrus.Entry, streamName string) (Streamer, error) {
-	env, err := stream.NewEnvironment(&options)
-	if err != nil {
-		return nil, err
+func NewRabbitMQStreamer(ctx context.Context, options stream.EnvironmentOptions, logger *logrus.Entry, streamName string) (Streamer, error) {
+	var err error
+	var env *stream.Environment
+	if err = retry.Do(ctx, retry.WithMaxRetries(maxRetries, retry.NewConstant(retryDelay)), func(ctx context.Context) error {
+		env, err = stream.NewEnvironment(&options)
+		if err != nil {
+			logger.WithError(err).Warning("failed to connect to RabbitMQ, retrying...")
+			return retry.RetryableError(err)
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to connect to RabbitMQ after %d retries: %w", maxRetries, err)
 	}
 	return &RabbitMQStreamer{environment: env, logger: logger, streamName: streamName}, err
 }
