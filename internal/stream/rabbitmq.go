@@ -48,7 +48,7 @@ func NewRabbitMQStreamer(ctx context.Context, options stream.EnvironmentOptions,
 	if err := retry.Do(ctx, retry.WithMaxRetries(maxRetries, retry.NewConstant(retryDelay)), func(ctx context.Context) error {
 		env, err = stream.NewEnvironment(&options)
 		if err != nil {
-			logger.WithError(err).Error("failed to connect to RabbitMQ, retrying...")
+			logger.WithError(err).Warning("failed to connect to RabbitMQ, retrying...")
 			return retry.RetryableError(err)
 		}
 		return nil
