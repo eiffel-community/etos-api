@@ -40,23 +40,8 @@ func (c cfg) RabbitMQURI() string {
 	return ""
 }
 
-// TestSSECreateStream tests that the CreateStream endpoint works.
-// Does not test the authorization middleware!
-func TestSSECreateStream(t *testing.T) {
-	log := logrus.WithFields(logrus.Fields{})
-	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
-	assert.NoError(t, err)
-	handler := Handler{log, &cfg{}, context.Background(), streamer}
-	responseRecorder := httptest.NewRecorder()
-	testrunID := "test_sse_create_stream"
-	request := httptest.NewRequest("GET", fmt.Sprintf("/v2alpha/stream/%s", testrunID), nil)
-	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: testrunID}}
-	handler.CreateStream(responseRecorder, request, ps)
-	defer func() {
-		os.Remove(testrunID)
-	}()
-	assert.Equal(t, http.StatusCreated, responseRecorder.Code)
-	assert.FileExists(t, testrunID)
+func (c cfg) RabbitMQStreamName() string {
+	return "test"
 }
 
 // TestSSEGetEvents tests that a client can subscribe to an SSE stream and get events.
