@@ -45,7 +45,7 @@ type RabbitMQStreamer struct {
 func NewRabbitMQStreamer(ctx context.Context, options stream.EnvironmentOptions, logger *logrus.Entry, streamName string) (Streamer, error) {
 	var err error
 	var env *stream.Environment
-	if err := retry.Do(ctx, retry.WithMaxRetries(maxRetries, retry.NewConstant(retryDelay)), func(ctx context.Context) error {
+	if err = retry.Do(ctx, retry.WithMaxRetries(maxRetries, retry.NewConstant(retryDelay)), func(ctx context.Context) error {
 		env, err = stream.NewEnvironment(&options)
 		if err != nil {
 			logger.WithError(err).Warning("failed to connect to RabbitMQ, retrying...")
@@ -53,7 +53,7 @@ func NewRabbitMQStreamer(ctx context.Context, options stream.EnvironmentOptions,
 		}
 		return nil
 	}); err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ after %d attempts: %w", maxRetries, err)
+		return nil, fmt.Errorf("failed to connect to RabbitMQ after %d retries: %w", maxRetries, err)
 	}
 	return &RabbitMQStreamer{environment: env, logger: logger, streamName: streamName}, err
 }
