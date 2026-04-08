@@ -79,7 +79,7 @@ func main() {
 			log.Fatal("ETOS_RABBITMQ_STREAM_NAME must be set for the SSE server to work.")
 		}
 		log.Infof("Starting up a RabbitMQStreamer with stream name: %s", cfg.RabbitMQStreamName())
-		streamer, err = stream.NewRabbitMQStreamer(*rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log, cfg.RabbitMQStreamName())
+		streamer, err = stream.NewRabbitMQStreamer(ctx, *rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log, cfg.RabbitMQStreamName())
 		if err != nil {
 			log.Fatal(err.Error())
 		}
