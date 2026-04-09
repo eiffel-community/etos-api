@@ -33,6 +33,7 @@ from opentelemetry.propagate import inject
 from opentelemetry.trace import Span
 from starlette.responses import Response
 
+from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
 from etos_api.library.opentelemetry import context
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
@@ -51,12 +52,26 @@ ETOSV1ALPHA = FastAPI(
     root_path_in_servers=False,
     dependencies=[Depends(context)],
 )
+
+API = f"/api/{ETOSV1ALPHA.version}/testrun"
+START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
+# The key {suite_id} is supposed to indicate that this is a path parameter, but
+# we don't want to set the actual value in the metrics label since that would create
+# a high cardinality metric. Therefore we use the literal string "{suite_id}".
+STOP_LABELS = {"endpoint": f"{API}/{{suite_id}}", "operation": OPERATIONS.stop_testrun.name}
+SUBSUITE_LABELS = {
+    "endpoint": f"{API}/{{suite_id}}",
+    "operation": OPERATIONS.get_subsuite.name,
+}
+
 TRACER = trace.get_tracer("etos_api.routers.testrun.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 # pylint:disable=too-many-locals,too-many-statements
 
 
+@REQUEST_TIME.labels(**START_LABELS).time()
+@COUNT_REQUESTS(START_LABELS, LOGGER)
 @ETOSV1ALPHA.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
 async def start_testrun(
     etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
@@ -74,6 +89,8 @@ async def start_testrun(
         return await _create_testrun(etos, span, otel_context.get_current())
 
 
+@REQUEST_TIME.labels(**STOP_LABELS).time()
+@COUNT_REQUESTS(STOP_LABELS, LOGGER)
 @ETOSV1ALPHA.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
 async def abort_testrun(
     suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]
@@ -91,6 +108,11 @@ async def abort_testrun(
         return await _abort(suite_id)
 
 
+# The key {suite_id} is supposed to indicate that this is a path parameter, but
+# we don't want to set the actual value in the metrics label since that would create
+# a high cardinality metric. Therefore we use the literal string "{suite_id}".
+@REQUEST_TIME.labels(**SUBSUITE_LABELS).time()
+@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER)
 @ETOSV1ALPHA.get("/testrun/{sub_suite_id}", tags=["etos"])
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.

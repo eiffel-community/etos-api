@@ -32,6 +32,7 @@ from opentelemetry.trace import Span
 from starlette.responses import RedirectResponse, Response
 
 from etos_api.library.environment import Configuration, configure_testrun
+from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
 from etos_api.library.opentelemetry import context
 from etos_api.library.utilities import sync_to_async
 
@@ -45,12 +46,22 @@ ETOSV0 = FastAPI(
     root_path_in_servers=False,
     dependencies=[Depends(context)],
 )
+
+API = f"/api/{ETOSV0.version}/etos"
+START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
+# The key {suite_id} is supposed to indicate that this is a path parameter, but
+# we don't want to set the actual value in the metrics label since that would create
+# a high cardinality metric. Therefore we use the literal string "{suite_id}".
+STOP_LABELS = {"endpoint": f"{API}/{{suite_id}}", "operation": OPERATIONS.stop_testrun.name}
+
 TRACER = trace.get_tracer("etos_api.routers.etos.router")
 LOGGER = logging.getLogger(__name__)
 logging.getLogger("pika").setLevel(logging.WARNING)
 # pylint:disable=too-many-locals,too-many-statements
 
 
+@REQUEST_TIME.labels(**START_LABELS).time()
+@COUNT_REQUESTS(START_LABELS, LOGGER)
 @ETOSV0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
 async def start_etos(
     etos: StartEtosRequest,
@@ -69,6 +80,8 @@ async def start_etos(
         return await _start(etos, span, otel_context.get_current())
 
 
+@REQUEST_TIME.labels(**STOP_LABELS).time()
+@COUNT_REQUESTS(STOP_LABELS, LOGGER)
 @ETOSV0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
 async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]) -> dict:
     """Abort ETOS execution on delete.
