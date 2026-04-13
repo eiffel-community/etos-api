@@ -15,10 +15,11 @@
 # limitations under the License.
 """Docker operations for the ETOS API."""
 
+import asyncio
 import logging
 import time
 from threading import Lock
-from typing import Mapping, Optional
+from typing import Any, Awaitable, Callable, Mapping, Optional
 
 import aiohttp
 
@@ -26,6 +27,21 @@ DEFAULT_TAG = "latest"
 DEFAULT_REGISTRY = "index.docker.io"
 REPO_DELIMITER = "/"
 TAG_DELIMITER = ":"
+
+# Retry configuration for transient connection errors.
+# Uses exponential backoff: delay = BACKOFF_FACTOR * 2^(attempt-1)
+# With BACKOFF_FACTOR=1 and MAX_RETRIES=5 the delays are 1s, 2s, 4s, 8s.
+MAX_RETRIES = 5
+BACKOFF_FACTOR = 1
+
+# aiohttp exceptions that indicate a transient connection problem worth retrying.
+_RETRYABLE_EXCEPTIONS = (
+    aiohttp.ClientConnectionResetError,
+    aiohttp.ClientConnectorError,
+    aiohttp.ServerDisconnectedError,
+    aiohttp.ServerTimeoutError,
+    asyncio.TimeoutError,
+)
 
 
 class Docker:
@@ -226,7 +242,58 @@ class Docker:
         base, tag = self.tag(name)
         registry, repo = self.repository(base)
         manifest_url = f"https://{registry}/v2/{repo}/manifests/{tag}"
+        return await self._retry(self._get_digest, name, manifest_url)
 
+    async def _retry(
+        self,
+        func: Callable[..., Awaitable[Optional[str]]],
+        name: str,
+        *args: Any,
+    ) -> Optional[str]:
+        """Call *func* with retries and exponential backoff.
+
+        Retries on transient connection errors (e.g. DNS hiccups) up to
+        MAX_RETRIES times.  The delay follows the same formula as urllib3
+        Retry used in etos-library: ``BACKOFF_FACTOR * 2 ** (attempt - 1)``.
+
+        :param func: Async callable to invoke on each attempt.
+        :param name: Image name (used only for logging).
+        :param args: Positional arguments forwarded to *func*.
+        :return: The value returned by *func*, or None after exhausting retries.
+        """
+        last_exception = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                return await func(*args)
+            except _RETRYABLE_EXCEPTIONS as exception:
+                last_exception = exception
+                self.logger.warning(
+                    "Transient error checking container image %r (attempt %d/%d): %s",
+                    name,
+                    attempt,
+                    MAX_RETRIES,
+                    exception,
+                    exc_info=True,
+                )
+                if attempt < MAX_RETRIES:
+                    delay = BACKOFF_FACTOR * (2 ** (attempt - 1))
+                    self.logger.info("Retrying in %s seconds...", delay)
+                    await asyncio.sleep(delay)
+
+        self.logger.exception(
+            "All %d attempts to check container image %r failed",
+            MAX_RETRIES,
+            name,
+            exc_info=last_exception,
+        )
+        return None
+
+    async def _get_digest(self, manifest_url: str) -> Optional[str]:
+        """Perform a single attempt to fetch the digest for a manifest URL.
+
+        :param manifest_url: Full URL to the image manifest.
+        :return: The sha256 digest, or None if the image was not found.
+        """
         digest = None
         async with aiohttp.ClientSession() as session:
             self.logger.info("Get digest from %r", manifest_url)
