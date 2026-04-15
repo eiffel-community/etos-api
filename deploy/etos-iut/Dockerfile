@@ -1,8 +1,8 @@
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /tmp/iut
 
 # Cache dependencies early
-RUN apk add --no-cache make=4.4.1-r2 git=2.47.3-r0
+RUN apk add --no-cache make=4.4.1-r3 git=2.52.0-r0
 COPY go.mod go.mod
 COPY go.sum go.sum
 RUN go mod download
