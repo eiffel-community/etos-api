@@ -17,10 +17,12 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -79,7 +81,11 @@ func main() {
 			log.Fatal("ETOS_RABBITMQ_STREAM_NAME must be set for the SSE server to work.")
 		}
 		log.Infof("Starting up a RabbitMQStreamer with stream name: %s", cfg.RabbitMQStreamName())
-		streamer, err = stream.NewRabbitMQStreamer(ctx, *rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI()), log, cfg.RabbitMQStreamName())
+		opts := rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI())
+		if strings.HasPrefix(cfg.RabbitMQURI(), "rabbitmq-stream+tls://") {
+			opts = opts.SetTLSConfig(&tls.Config{})
+		}
+		streamer, err = stream.NewRabbitMQStreamer(ctx, *opts, log, cfg.RabbitMQStreamName())
 		if err != nil {
 			log.Fatal(err.Error())
 		}
