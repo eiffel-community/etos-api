@@ -1,8 +1,6 @@
 module github.com/eiffel-community/etos-api
 
-go 1.22.0
-
-toolchain go1.22.1
+go 1.26.0
 
 require (
 	github.com/eiffel-community/eiffelevents-sdk-go v0.0.0-20240807115026-5ca5c194b7dc
