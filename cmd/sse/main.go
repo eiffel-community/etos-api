@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -83,7 +84,11 @@ func main() {
 		log.Infof("Starting up a RabbitMQStreamer with stream name: %s", cfg.RabbitMQStreamName())
 		opts := rabbitMQStream.NewEnvironmentOptions().SetUri(cfg.RabbitMQURI())
 		if strings.HasPrefix(cfg.RabbitMQURI(), "rabbitmq-stream+tls://") {
-			opts = opts.SetTLSConfig(&tls.Config{})
+			var serverName string
+			if u, err := url.Parse(cfg.RabbitMQURI()); err == nil {
+				serverName = u.Hostname()
+			}
+			opts = opts.SetTLSConfig(&tls.Config{ServerName: serverName})
 		}
 		streamer, err = stream.NewRabbitMQStreamer(ctx, *opts, log, cfg.RabbitMQStreamName())
 		if err != nil {
