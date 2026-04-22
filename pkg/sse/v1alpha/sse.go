@@ -100,11 +100,12 @@ func (h SSEHandler) Subscribe(ch chan<- events.Event, logger *logrus.Entry, ctx 
 		case <-tick.C:
 			messages, err := GetFrom(ctx, url)
 			if err != nil {
-				// The context sent to IsFinished may be canceled due to client-side
-				// throttling by Kubernetes. We don't want IsFinished to cancel the
+				// The context sent to JobState may be canceled due to client-side
+				// throttling by Kubernetes. We don't want JobState to cancel the
 				// the request context from our clients, causing a ConnectionReset,
 				// so we create a new context here.
-				if h.kube.IsFinished(context.Background(), identifier) {
+				state := h.kube.JobState(context.Background(), identifier)
+				if state == kubernetes.JobFinished || state == kubernetes.JobNotFound {
 					logger.Info("ESR finished, shutting down")
 					ch <- events.Event{Event: "shutdown"}
 					return
@@ -182,7 +183,8 @@ func forceKillConnection(w http.ResponseWriter, logger *logrus.Entry) {
 // GetEvents is an endpoint for streaming events and logs from an ESR instance.
 func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	identifier := ps.ByName("identifier")
-	if h.kube.IsFinished(r.Context(), identifier) {
+	state := h.kube.JobState(r.Context(), identifier)
+	if state == kubernetes.JobFinished {
 		http.NotFound(w, r)
 		return
 	}
@@ -191,6 +193,11 @@ func (h SSEHandler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprou
 
 	url, err := h.url(r.Context(), identifier)
 	if err != nil {
+		if state == kubernetes.JobNotFound {
+			logger.Info("Suite runner not yet available, returning 503")
+			http.Error(w, "Suite runner not yet available", http.StatusServiceUnavailable)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

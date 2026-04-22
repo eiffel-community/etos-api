@@ -280,28 +280,51 @@ func keyPairExists(labels map[string]string, keyPair map[string]string) bool {
 	return true
 }
 
+// JobStatus represents the status of a suite-runner job.
+type JobStatus int
+
+const (
+	// JobRunning indicates the job exists and is still running.
+	JobRunning JobStatus = iota
+	// JobFinished indicates the job exists and has completed (succeeded or failed).
+	JobFinished
+	// JobNotFound indicates no matching job was found in the cluster.
+	// This can mean the job has not been created yet (testrun is still
+	// provisioning) or that it was already cleaned up after completion.
+	JobNotFound
+)
+
 // IsFinished checks if an ESR job is finished.
+// Deprecated: Use JobState instead, which distinguishes "not found" from "finished".
 func (k *Kubernetes) IsFinished(ctx context.Context, identifier string) bool {
+	state := k.JobState(ctx, identifier)
+	// Preserve legacy behavior: treat not-found as finished.
+	return state == JobFinished || state == JobNotFound
+}
+
+// JobState returns the status of the suite-runner job for the given identifier.
+// Unlike IsFinished, it distinguishes between a job that has not been created yet
+// (JobNotFound) and one that has completed (JobFinished).
+func (k *Kubernetes) JobState(ctx context.Context, identifier string) JobStatus {
 	client, err := k.clientset()
 	if err != nil {
 		k.logger.Error(err)
-		return false
+		return JobRunning
 	}
 	jobs, err := k.getJobsByIdentifier(ctx, client, identifier)
 	if err != nil {
 		k.logger.Error(err)
-		return false
+		return JobRunning
 	}
 	if len(jobs.Items) == 0 {
-		// Assume that a job is finished if it does not exist.
-		k.logger.Warningf("job with id %s does not exist, assuming finished", identifier)
-		return true
+		k.logger.Warningf("job with id %s does not exist", identifier)
+		return JobNotFound
 	}
 	job := jobs.Items[0]
 	if job.Status.Succeeded == 0 && job.Status.Failed == 0 {
-		return false
+		return JobRunning
 	}
-	return true
+	return JobFinished
 }
 
 // LogListenerIP gets the IP address of an ESR log listener.
