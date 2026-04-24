@@ -61,9 +61,13 @@ class StartTestrunRequest(TestrunRequest):
         values = info.data
         artifact_identity = values.get("artifact_identity")
 
+        # Treat empty/whitespace-only identity as not provided
+        if isinstance(artifact_identity, str) and not artifact_identity.strip():
+            artifact_identity = None
+
         # Check that at least one is provided
         if artifact_identity is None and not artifact_id:
-            raise ValueError("At least one of 'artifact_identity' or 'artifact_id' is required.")
+            raise ValueError("Missing or invalid identity: provide a valid UUID or PURL.")
 
         # Check that only one is provided
         if artifact_identity is not None and artifact_id:
@@ -72,7 +76,7 @@ class StartTestrunRequest(TestrunRequest):
         # Validate artifact_identity format if provided
         if artifact_identity is not None:
             if not isinstance(artifact_identity, str) or not artifact_identity.startswith("pkg:"):
-                raise ValueError("artifact_identity must be a string starting with 'pkg:'")
+                raise ValueError("Invalid artifact_identity: must be a valid PURL.")
 
         # Note: artifact_id UUID validation is handled by Pydantic's built-in UUID type validation
 
