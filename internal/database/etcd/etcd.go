@@ -29,6 +29,14 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+// keyTTL is the default time-to-live for keys written to etcd.
+// Keys that are not explicitly deleted will expire after this duration,
+// preventing leaked keys from accumulating indefinitely.
+// 24 hours matches the default ETOS test result timeout
+// (ETOS_DEFAULT_TEST_RESULT_TIMEOUT) with a 10-minute margin, consistent
+// with how etcd lease expiration is calculated in etos-api.
+const keyTTL = 24*time.Hour + 10*time.Minute
+
 // TODO: refactor the client so that it does not store data it fetched.
 // However, without it implementing the database.Opener interface would be more complex (methods readByte, read).
 type Etcd struct {
@@ -62,21 +70,29 @@ func New(cfg config.Config, logger *logrus.Logger, treePrefix string) database.O
 // Open returns a copy of an Etcd client with ID and context added
 func (etcd Etcd) Open(ctx context.Context, id uuid.UUID) io.ReadWriter {
 	return &Etcd{
-		client: etcd.client,
-		cfg:    etcd.cfg,
-		ID:     id,
-		ctx:    ctx,
+		client:     etcd.client,
+		cfg:        etcd.cfg,
+		treePrefix: etcd.treePrefix,
+		ID:         id,
+		ctx:        ctx,
 	}
 }
 
-// Write writes data to etcd
+// Write writes data to etcd with a lease that expires after keyTTL.
+// The lease acts as a safety net: if Delete is never called (e.g. due to a
+// crash or timeout), the key will be automatically removed by etcd after
+// the TTL elapses, preventing unbounded database growth.
 func (etcd Etcd) Write(p []byte) (int, error) {
 	if etcd.ID == uuid.Nil {
 		return 0, errors.New("please create a new etcd client using Open")
 	}
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
 
-	_, err := etcd.client.Put(etcd.ctx, key, string(p))
+	lease, err := etcd.client.Grant(etcd.ctx, int64(keyTTL.Seconds()))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create lease for key %s: %w", key, err)
+	}
+	_, err = etcd.client.Put(etcd.ctx, key, string(p), clientv3.WithLease(lease.ID))
 	if err != nil {
 		return 0, err
 	}
