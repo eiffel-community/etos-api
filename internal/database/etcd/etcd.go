@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
@@ -29,13 +31,29 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// keyTTL is the default time-to-live for keys written to etcd.
+// defaultTestResultTimeout is the default ETOS test result timeout in seconds,
+// matching the Python default in etos-library (ETOS_DEFAULT_TEST_RESULT_TIMEOUT).
+const defaultTestResultTimeout = 86400
+
+// leaseMargin is extra time added to the test result timeout to form the key TTL,
+// consistent with how etcd_lease_expiration_time is calculated in etos-api.
+const leaseMargin = 10 * time.Minute
+
+// keyTTL returns the time-to-live for keys written to etcd.
+// It reads ETOS_DEFAULT_TEST_RESULT_TIMEOUT from the environment (defaulting to
+// 86400 seconds / 24 hours) and adds a 10-minute margin, matching how the Python
+// etos-api calculates etcd_lease_expiration_time.
 // Keys that are not explicitly deleted will expire after this duration,
 // preventing leaked keys from accumulating indefinitely.
-// 24 hours matches the default ETOS test result timeout
-// (ETOS_DEFAULT_TEST_RESULT_TIMEOUT) with a 10-minute margin, consistent
-// with how etcd lease expiration is calculated in etos-api.
-const keyTTL = 24*time.Hour + 10*time.Minute
+func keyTTL() time.Duration {
+	timeout := defaultTestResultTimeout
+	if val, ok := os.LookupEnv("ETOS_DEFAULT_TEST_RESULT_TIMEOUT"); ok {
+		if parsed, err := strconv.Atoi(val); err == nil && parsed > 0 {
+			timeout = parsed
+		}
+	}
+	return time.Duration(timeout)*time.Second + leaseMargin
+}
 
 // TODO: refactor the client so that it does not store data it fetched.
 // However, without it implementing the database.Opener interface would be more complex (methods readByte, read).
@@ -88,7 +106,8 @@ func (etcd Etcd) Write(p []byte) (int, error) {
 	}
 	key := fmt.Sprintf("%s/%s", etcd.treePrefix, etcd.ID.String())
 
-	lease, err := etcd.client.Grant(etcd.ctx, int64(keyTTL.Seconds()))
+	ttl := keyTTL()
+	lease, err := etcd.client.Grant(etcd.ctx, int64(ttl.Seconds()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to create lease for key %s: %w", key, err)
 	}
