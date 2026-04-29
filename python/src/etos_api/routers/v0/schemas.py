@@ -68,7 +68,7 @@ class StartEtosRequest(EtosRequest):
 
         # Check that at least one is provided
         if artifact_identity is None and not artifact_id:
-            raise ValueError("Missing or invalid identity: provide a valid UUID or PURL.")
+            raise ValueError("Missing or invalid identity: provide a valid UUID or PackageURL.")
 
         # Check that only one is provided
         if artifact_identity is not None and artifact_id:
@@ -77,7 +77,7 @@ class StartEtosRequest(EtosRequest):
         # Validate artifact_identity format if provided
         if artifact_identity is not None:
             if not isinstance(artifact_identity, str) or not artifact_identity.startswith("pkg:"):
-                raise ValueError("Invalid artifact_identity: must be a valid PURL.")
+                raise ValueError("Invalid artifact_identity: must be a valid PackageURL.")
 
         # Note: artifact_id UUID validation is handled by Pydantic's built-in UUID type validation
 

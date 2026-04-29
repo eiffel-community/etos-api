@@ -262,7 +262,7 @@ class TestRouters(TestCase):
         error_detail = response.json()
         assert "detail" in error_detail
         error_messages = [error["msg"] for error in error_detail["detail"]]
-        expected_message = "Missing or invalid identity: provide a valid UUID"
+        expected_message = "Missing or invalid identity: provide a valid UUID or PackageURL."
         assert any(expected_message in msg for msg in error_messages)
 
     def test_start_etos_empty_artifact_identity_and_none_artifact_id(self):
@@ -295,7 +295,7 @@ class TestRouters(TestCase):
         error_detail = response.json()
         assert "detail" in error_detail
         error_messages = [error["msg"] for error in error_detail["detail"]]
-        expected_message = "Missing or invalid identity: provide a valid UUID"
+        expected_message = "Missing or invalid identity: provide a valid UUID or PackageURL."
         assert any(expected_message in msg for msg in error_messages)
 
     def test_start_etos_both_artifact_identity_and_id_provided(self):
