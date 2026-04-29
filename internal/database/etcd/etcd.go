@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
@@ -31,9 +30,9 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// defaultTestResultTimeout is the default ETOS test result timeout in seconds,
+// defaultTestResultTimeout is the default ETOS test result timeout,
 // matching the Python default in etos-library (ETOS_DEFAULT_TEST_RESULT_TIMEOUT).
-const defaultTestResultTimeout = 86400
+const defaultTestResultTimeout = 24 * time.Hour
 
 // leaseMargin is extra time added to the test result timeout to form the key TTL,
 // consistent with how etcd_lease_expiration_time is calculated in etos-api.
@@ -41,18 +40,20 @@ const leaseMargin = 10 * time.Minute
 
 // keyTTL returns the time-to-live for keys written to etcd.
 // It reads ETOS_DEFAULT_TEST_RESULT_TIMEOUT from the environment (defaulting to
-// 86400 seconds / 24 hours) and adds a 10-minute margin, matching how the Python
+// 24h) and adds a 10-minute margin, matching how the Python
 // etos-api calculates etcd_lease_expiration_time.
+// The environment variable is parsed with time.ParseDuration and accepts
+// values such as "24h", "48h30m", "86400s", etc.
 // Keys that are not explicitly deleted will expire after this duration,
 // preventing leaked keys from accumulating indefinitely.
 func keyTTL() time.Duration {
 	timeout := defaultTestResultTimeout
 	if val, ok := os.LookupEnv("ETOS_DEFAULT_TEST_RESULT_TIMEOUT"); ok {
-		if parsed, err := strconv.Atoi(val); err == nil && parsed > 0 {
+		if parsed, err := time.ParseDuration(val); err == nil && parsed > 0 {
 			timeout = parsed
 		}
 	}
-	return time.Duration(timeout)*time.Second + leaseMargin
+	return timeout + leaseMargin
 }
 
 // TODO: refactor the client so that it does not store data it fetched.
