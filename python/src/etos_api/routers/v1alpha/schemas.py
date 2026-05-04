@@ -46,6 +46,8 @@ class StartTestrunRequest(TestrunRequest):
     )
     iut_provider: Optional[str] = os.getenv("DEFAULT_IUT_PROVIDER", "default")
     log_area_provider: Optional[str] = os.getenv("DEFAULT_LOG_AREA_PROVIDER", "default")
+    timeout: Optional[int] = None
+    deadline: Optional[int] = None
 
     @field_validator("artifact_id")
     def validate_id_or_identity(cls, artifact_id, info):
