@@ -20,7 +20,12 @@ from typing import Optional, Union
 from uuid import UUID
 
 # Pylint refrains from linting C extensions due to arbitrary code execution.
-from pydantic import BaseModel, Field, field_validator, model_validator  # pylint:disable=no-name-in-module
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    model_validator,
+)  # pylint:disable=no-name-in-module
 
 # pylint: disable=too-few-public-methods
 # pylint: disable=no-self-argument
