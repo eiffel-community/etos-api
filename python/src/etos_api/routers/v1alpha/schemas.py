@@ -20,7 +20,12 @@ from typing import Optional, Union
 from uuid import UUID
 
 # Pylint refrains from linting C extensions due to arbitrary code execution.
-from pydantic import BaseModel, Field, field_validator  # pylint:disable=no-name-in-module
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    model_validator,
+)  # pylint:disable=no-name-in-module
 
 # pylint: disable=too-few-public-methods
 # pylint: disable=no-self-argument
@@ -46,6 +51,22 @@ class StartTestrunRequest(TestrunRequest):
     )
     iut_provider: Optional[str] = os.getenv("DEFAULT_IUT_PROVIDER", "default")
     log_area_provider: Optional[str] = os.getenv("DEFAULT_LOG_AREA_PROVIDER", "default")
+    timeout: Optional[int] = None
+    deadline: Optional[int] = None
+
+    @model_validator(mode="after")
+    def validate_timeout_or_deadline(self):
+        """Validate that only one of timeout or deadline is set.
+
+        The controller will ignore timeout if deadline is set, so we should
+        prevent users from setting both to avoid confusion.
+
+        :return: The validated model.
+        :rtype: StartTestrunRequest
+        """
+        if self.timeout is not None and self.deadline is not None:
+            raise ValueError("Only one of 'timeout' or 'deadline' can be set, not both.")
+        return self
 
     @field_validator("artifact_id")
     def validate_id_or_identity(cls, artifact_id, info):

@@ -250,6 +250,8 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
         ),
         spec=TestRunSpec(
             cluster=os.getenv("ETOS_CLUSTER", "Unknown"),
+            timeout=etos.timeout,
+            deadline=etos.deadline,
             id=testrun_id,
             retention=retention,
             suiteRunner=Image(
