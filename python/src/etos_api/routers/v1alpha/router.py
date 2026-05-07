@@ -181,7 +181,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
         ) from exception
     if artifact is None:
         if etos.artifact_id is not None:
-            detail = f"Artifact with ID '{etos.artifact_id}' not found" " in the Event Repository."
+            detail = f"Artifact with ID '{etos.artifact_id}' not found in the Event Repository."
         else:
             detail = (
                 f"Artifact with identity '{etos.artifact_identity}' not found"
