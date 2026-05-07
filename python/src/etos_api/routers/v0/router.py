@@ -163,11 +163,14 @@ async def _start(etos: StartEtosRequest, span: Span, ctx: otel_context.Context) 
             status_code=400, detail=f"Could not connect to GraphQL. {exception}"
         ) from exception
     if artifact is None:
-        identity = etos.artifact_identity or str(etos.artifact_id)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unable to find artifact with identity '{identity}'",
-        )
+        if etos.artifact_id is not None:
+            detail = f"Artifact with ID '{etos.artifact_id}' not found in the Event Repository."
+        else:
+            detail = (
+                f"Artifact with identity '{etos.artifact_identity}' not found"
+                " in the Event Repository."
+            )
+        raise HTTPException(status_code=400, detail=detail)
     LOGGER.info("Found artifact created %r", artifact)
     # There are assumptions here. Since "edges" list is already tested
     # and we know that the return from GraphQL must be 'node'.'meta'.'id'
