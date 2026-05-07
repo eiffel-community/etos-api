@@ -262,7 +262,7 @@ class TestRouters(TestCase):
         error_detail = response.json()
         assert "detail" in error_detail
         error_messages = [error["msg"] for error in error_detail["detail"]]
-        expected_message = "At least one of 'artifact_identity' or 'artifact_id' is required."
+        expected_message = "Missing or invalid identity: provide a valid UUID or PackageURL."
         assert any(expected_message in msg for msg in error_messages)
 
     def test_start_etos_empty_artifact_identity_and_none_artifact_id(self):
@@ -270,12 +270,12 @@ class TestRouters(TestCase):
 
         Approval criteria:
             - POST requests to ETOS with empty artifact_identity shall return 422.
-            - The error message shall indicate invalid format (empty doesn't start with 'pkg:').
+            - The error message shall indicate that at least one identifier is required.
 
         Test steps::
             1. Send a POST request to etos with empty artifact_identity and None artifact_id.
             2. Verify that the status code is 422.
-            3. Verify that the error message indicates invalid format.
+            3. Verify that the error message indicates at least one is required.
         """
         self.logger.info(
             "STEP: Send a POST request to etos with empty artifact_identity and None artifact_id."
@@ -291,11 +291,11 @@ class TestRouters(TestCase):
         self.logger.info("STEP: Verify that the status code is 422.")
         assert response.status_code == 422
 
-        self.logger.info("STEP: Verify that the error message indicates invalid format.")
+        self.logger.info("STEP: Verify that the error message indicates at least one is required.")
         error_detail = response.json()
         assert "detail" in error_detail
         error_messages = [error["msg"] for error in error_detail["detail"]]
-        expected_message = "artifact_identity must be a string starting with 'pkg:'"
+        expected_message = "Missing or invalid identity: provide a valid UUID or PackageURL."
         assert any(expected_message in msg for msg in error_messages)
 
     def test_start_etos_both_artifact_identity_and_id_provided(self):
