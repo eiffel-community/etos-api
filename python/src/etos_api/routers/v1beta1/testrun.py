@@ -24,10 +24,8 @@ import requests
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
 from etos_lib.kubernetes import TestRun as TestRunClient
-from etos_lib.kubernetes.schemas.v1beta1_testrun import (Metadata, Providers,
-                                                         Retention, Suite)
-from etos_lib.kubernetes.schemas.v1beta1_testrun import \
-    TestRun as TestRunSchema
+from etos_lib.kubernetes.schemas.v1beta1_testrun import Metadata, Providers, Retention, Suite
+from etos_lib.kubernetes.schemas.v1beta1_testrun import TestRun as TestRunSchema
 from etos_lib.kubernetes.schemas.v1beta1_testrun import TestRunSpec
 from fastapi import HTTPException
 from opentelemetry import baggage as otel_baggage
