@@ -130,6 +130,7 @@ async def _start(etos: StartEtosRequest, span: Span, ctx: otel_context.Context) 
     tercc = EiffelTestExecutionRecipeCollectionCreatedEvent()
     LOGGER.identifier.set(tercc.meta.event_id)
     span.set_attribute("etos.id", tercc.meta.event_id)
+    span.set_attribute("etos.version", ETOSV0.version)
     span.set_attribute(
         "parent_activity", str(etos.parent_activity) if etos.parent_activity else "None"
     )
