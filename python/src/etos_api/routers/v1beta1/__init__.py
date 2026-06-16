@@ -1,4 +1,4 @@
-# Copyright 2020-2021 Axis Communications AB.
+# Copyright Axis Communications AB.
 #
 # For a full list of individual contributors, please see the commit history.
 #
@@ -13,20 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""ETOS API."""
+"""ETOS API testrun module."""
 
-from fastapi import FastAPI
-from prometheus_client import make_asgi_app
-
-from etos_api.routers.v0 import ETOSV0
-from etos_api.routers.v1alpha import ETOSV1ALPHA
-from etos_api.routers.v1beta1 import ETOSV1BETA1
-
-DEFAULT_VERSION = ETOSV0
-
-APP = FastAPI()
-APP.mount("/api/v1alpha", ETOSV1ALPHA, "ETOS V1 Alpha")
-APP.mount("/api/v1beta1", ETOSV1BETA1, "ETOS V1 Beta")
-APP.mount("/api/v0", ETOSV0, "ETOS V0")
-APP.mount("/api", DEFAULT_VERSION, "ETOS V0")
-APP.mount("/metrics", make_asgi_app(), "Metrics")
+from . import schemas
+from .router import ETOSV1BETA1

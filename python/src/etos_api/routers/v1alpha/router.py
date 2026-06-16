@@ -147,6 +147,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
     testrun_id = str(uuid4())
     LOGGER.identifier.set(testrun_id)
     span.set_attribute("etos.id", testrun_id)
+    span.set_attribute("etos.version", ETOSV1ALPHA.version)
 
     LOGGER.info("Download test suite.")
     span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
