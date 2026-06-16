@@ -21,8 +21,7 @@ import re
 import time
 
 from etos_api.library.graphql import GraphqlQueryHandler
-from etos_api.library.graphql_queries import (ARTIFACT_IDENTITY_QUERY,
-                                              VERIFY_ARTIFACT_ID_EXISTS)
+from etos_api.library.graphql_queries import ARTIFACT_IDENTITY_QUERY, VERIFY_ARTIFACT_ID_EXISTS
 
 LOGGER = logging.getLogger(__name__)
 

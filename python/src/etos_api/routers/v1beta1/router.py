@@ -29,8 +29,7 @@ from starlette.responses import Response
 from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
 from etos_api.library.opentelemetry import context
 
-from .schemas import (AbortTestrunResponse, StartTestrunRequest,
-                      StartTestrunResponse)
+from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .testrun import TestRun
 
 ETOSV1BETA1 = FastAPI(
@@ -115,8 +114,8 @@ async def get_subsuite(sub_suite_id: str) -> dict:
         environment_resource = environment_client.get(sub_suite_id)
         if not environment_resource:
             raise HTTPException(404, "Environment not found")
-    except NotFoundError:
-        raise HTTPException(404, "Environment not found")
+    except NotFoundError as error:
+        raise HTTPException(404, "Environment not found") from error
     environment_spec = environment_resource.to_dict().get("spec", {})
     return environment_spec
 
