@@ -139,6 +139,20 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
     test_suite = await testrun.download_suite(etos.test_suite_url)
     testrun_spec = await testrun.validate_suite(test_suite)
 
+    datasets = etos.dataset
+    if isinstance(datasets, list):
+        if len(datasets) != len(testrun_spec.suites):
+            raise HTTPException(
+                status_code=400,
+                detail="If multiple datasets are provided, the number of datasets must correspond"
+                " with number of test suites",
+            )
+    else:
+        datasets = [datasets] * len(testrun_spec.suites)
+
+    for suite in testrun_spec.suites:
+        suite.dataset.update(datasets.pop(0))
+
     artifact = await testrun.wait_for_artifact(str(etos.artifact_id), etos.artifact_identity)
     testrun_name = await testrun.generate_name(testrun_spec.name)
     await testrun.create(ctx, etos, testrun_name, artifact, testrun_spec)
