@@ -24,9 +24,9 @@ import requests
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
 from etos_lib.kubernetes import TestRun as TestRunClient
-from etos_lib.kubernetes.schemas.v1beta1_testrun import Metadata, Providers, Retention, Suite
-from etos_lib.kubernetes.schemas.v1beta1_testrun import TestRun as TestRunSchema
-from etos_lib.kubernetes.schemas.v1beta1_testrun import TestRunSpec
+from etos_lib.kubernetes.schemas.v1beta1.testrun import Metadata, Providers, Retention, Suite
+from etos_lib.kubernetes.schemas.v1beta1.testrun import TestRun as TestRunSchema
+from etos_lib.kubernetes.schemas.v1beta1.testrun import TestRunSpec
 from fastapi import HTTPException
 from opentelemetry import baggage as otel_baggage
 from opentelemetry import context as otel_context
@@ -110,9 +110,9 @@ class TestRun:
                 test_runner = execution.environment.testRunner
                 if test_runner in checked:
                     continue
-                assert (
-                    await docker.digest(test_runner) is not None
-                ), f"Test runner {test_runner} not found"
+                assert await docker.digest(test_runner) is not None, (
+                    f"Test runner {test_runner} not found"
+                )
                 checked.add(test_runner)
         return testrun
 
