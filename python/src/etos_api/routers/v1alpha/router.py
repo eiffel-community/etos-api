@@ -22,9 +22,9 @@ from uuid import uuid4
 
 from etos_lib import ETOS
 from etos_lib.kubernetes import Environment, Kubernetes, TestRun
-from etos_lib.kubernetes.schemas.testrun import Image, Metadata, Providers, Retention
-from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema
-from etos_lib.kubernetes.schemas.testrun import TestRunner, TestRunSpec
+from etos_lib.kubernetes.schemas.v1alpha1.testrun import Image, Metadata, Providers, Retention
+from etos_lib.kubernetes.schemas.v1alpha1.testrun import TestRun as TestRunSchema
+from etos_lib.kubernetes.schemas.v1alpha1.testrun import TestRunner, TestRunSpec
 from fastapi import Depends, FastAPI, HTTPException
 from opentelemetry import baggage as otel_baggage
 from opentelemetry import context as otel_context
