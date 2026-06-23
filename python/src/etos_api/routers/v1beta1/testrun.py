@@ -20,7 +20,7 @@ import os
 from typing import Optional
 from uuid import uuid4
 
-import requests
+import aiohttp
 from etos_lib import ETOS
 from etos_lib.kubernetes import Kubernetes
 from etos_lib.kubernetes import TestRun as TestRunClient
@@ -85,12 +85,13 @@ class TestRun:
         self.logger.info("Downloading test suite %r", url)
         self.span.set_attribute("etos.test_suite.uri", url)
         try:
-            response = requests.get(url, timeout=60)
-            response.raise_for_status()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=60, raise_for_status=True) as response:
+                    content = await response.read()
         except Exception as exception:  # pylint:disable=broad-except
             raise AssertionError(f"Unable to download suite from {url}") from exception
         self.logger.info("Test suite downloaded")
-        return safe_load(response.content)
+        return safe_load(content)
 
     async def validate_suite(self, test_suite: dict) -> MinimalSpec:
         """Validate the test suite against the MinimalSpec schema."""
@@ -110,9 +111,9 @@ class TestRun:
                 test_runner = execution.environment.testRunner
                 if test_runner in checked:
                     continue
-                assert (
-                    await docker.digest(test_runner) is not None
-                ), f"Test runner {test_runner} not found"
+                assert await docker.digest(test_runner) is not None, (
+                    f"Test runner {test_runner} not found"
+                )
                 checked.add(test_runner)
         return testrun
 
