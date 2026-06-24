@@ -111,9 +111,9 @@ class TestRun:
                 test_runner = execution.environment.testRunner
                 if test_runner in checked:
                     continue
-                assert await docker.digest(test_runner) is not None, (
-                    f"Test runner {test_runner} not found"
-                )
+                assert (
+                    await docker.digest(test_runner) is not None
+                ), f"Test runner {test_runner} not found"
                 checked.add(test_runner)
         return testrun
 
