@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/eiffel-community/eiffelevents-sdk-go v0.0.0-20240807115026-5ca5c194b7dc
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/package-url/packageurl-go v0.1.3
