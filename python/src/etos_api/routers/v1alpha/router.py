@@ -26,6 +26,7 @@ from etos_lib.kubernetes.schemas.testrun import Image, Metadata, Providers, Rete
 from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema
 from etos_lib.kubernetes.schemas.testrun import TestRunner, TestRunSpec
 from fastapi import Depends, FastAPI, HTTPException
+from kubernetes.dynamic.exceptions import NotFoundError
 from opentelemetry import baggage as otel_baggage
 from opentelemetry import context as otel_context
 from opentelemetry import trace
@@ -121,7 +122,10 @@ async def get_subsuite(sub_suite_id: str) -> dict:
     :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
     environment_client = Environment(Kubernetes())
-    environment_resource = environment_client.get(sub_suite_id)
+    try:
+        environment_resource = environment_client.get(sub_suite_id)
+    except NotFoundError:
+        environment_resource = None
     if not environment_resource:
         raise HTTPException(404, "Failed to get environment")
     environment_spec = environment_resource.to_dict().get("spec", {})
