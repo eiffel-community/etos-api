@@ -46,7 +46,7 @@ func (c cfg) RabbitMQStreamName() string {
 
 // TestSSEGetEvents tests that a client can subscribe to an SSE stream and get events.
 func TestSSEGetEvents(t *testing.T) {
-	data := []byte(`{"data":"hello world","event":"message"}`)
+	data := []byte(`{"event":"message","data":{"message":"hello world","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
 	testrunID := "test_sse_get_events"
 	os.WriteFile(testrunID, data, 0644)
 	defer func() {
@@ -71,7 +71,38 @@ func TestSSEGetEvents(t *testing.T) {
 	fmt.Println(string(body))
 	assert.Equal(t, body, []byte(`id: 1
 event: message
-data: "hello world"
+data: {"@timestamp":"2026-08-31T10:00:00Z","message":"hello world","name":"etos"}
 
 `))
+}
+
+// TestSSEGetEventsDropsInvalid tests that events which do not match the protocol
+// are dropped and never forwarded to the client.
+func TestSSEGetEventsDropsInvalid(t *testing.T) {
+	// A "message" event whose data is a plain string does not match the Log
+	// protocol and must be dropped.
+	data := []byte(`{"event":"message","data":"hello world"}`)
+	testrunID := "test_sse_drops_invalid"
+	os.WriteFile(testrunID, data, 0644)
+	defer func() {
+		os.Remove(testrunID)
+	}()
+	ctx, done := context.WithTimeout(context.Background(), time.Second*1)
+	defer done()
+
+	log := logrus.WithFields(logrus.Fields{})
+	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
+	assert.NoError(t, err)
+	handler := Handler{log, &cfg{}, context.Background(), streamer}
+	responseRecorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", fmt.Sprintf("/v2alpha/events/%s", testrunID), nil)
+	request = request.WithContext(ctx)
+	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: testrunID}}
+	handler.GetEvents(responseRecorder, request, ps)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	body, err := io.ReadAll(responseRecorder.Body)
+	assert.NoError(t, err)
+	// The invalid event is dropped, so no data event is written to the client.
+	assert.NotContains(t, string(body), "hello world")
 }

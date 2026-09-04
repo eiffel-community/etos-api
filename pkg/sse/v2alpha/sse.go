@@ -28,6 +28,7 @@ import (
 	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/events"
+	schema "github.com/eiffel-community/etos/schemas/messaging/v2alpha"
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/sirupsen/logrus"
@@ -141,6 +142,10 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 			event, err = events.New(msg)
 			if err != nil {
 				logger.WithError(err).Error("failed to parse SSE event")
+				continue
+			}
+			if err := schema.Validate(msg); err != nil {
+				logger.WithError(err).Warning("dropping SSE event that does not match the protocol")
 				continue
 			}
 			event.ID = counter
