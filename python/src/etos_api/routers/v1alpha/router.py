@@ -22,9 +22,9 @@ from uuid import uuid4
 
 from etos_lib import ETOS
 from etos_lib.kubernetes import Environment, Kubernetes, TestRun
-from etos_lib.kubernetes.schemas.testrun import Image, Metadata, Providers, Retention
-from etos_lib.kubernetes.schemas.testrun import TestRun as TestRunSchema
-from etos_lib.kubernetes.schemas.testrun import TestRunner, TestRunSpec
+from etos_lib.kubernetes.schemas.v1alpha1.testrun import Image, Metadata, Providers, Retention
+from etos_lib.kubernetes.schemas.v1alpha1.testrun import TestRun as TestRunSchema
+from etos_lib.kubernetes.schemas.v1alpha1.testrun import TestRunner, TestRunSpec
 from fastapi import Depends, FastAPI, HTTPException
 from kubernetes.dynamic.exceptions import NotFoundError
 from opentelemetry import baggage as otel_baggage
@@ -151,6 +151,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
     testrun_id = str(uuid4())
     LOGGER.identifier.set(testrun_id)
     span.set_attribute("etos.id", testrun_id)
+    span.set_attribute("etos.version", ETOSV1ALPHA.version)
 
     LOGGER.info("Download test suite.")
     span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
