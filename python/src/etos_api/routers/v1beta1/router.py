@@ -104,8 +104,6 @@ async def abort_testrun(
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
 
-    Still uses v1alpha of Environment since it does not yet have a v1beta1 version.
-
     :param sub_suite_id: The name of the Environment kubernetes resource.
     :return: JSON dictionary with the Environment spec. Formatted to TERCC format.
     """
