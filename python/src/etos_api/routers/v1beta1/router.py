@@ -35,7 +35,7 @@ from .testrun import TestRun
 ETOSV1BETA1 = FastAPI(
     title="ETOS",
     version="v1beta1",
-    summary="API endpoints for ETOS v1 Alpha",
+    summary="API endpoints for ETOS v1 Beta",
     root_path_in_servers=False,
     dependencies=[Depends(context)],
 )
