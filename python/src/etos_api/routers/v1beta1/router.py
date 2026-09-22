@@ -134,8 +134,20 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
     """
     testrun = TestRun(span)
 
-    test_suite = await testrun.download_suite(etos.test_suite_url)
-    testrun_spec = await testrun.validate_suite(test_suite)
+    try:
+        test_suite = await testrun.download_suite(etos.test_suite_url)
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to download test suite from {etos.test_suite_url}: {str(error)}",
+        ) from error
+    try:
+        testrun_spec = await testrun.validate_suite(test_suite)
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to validate test suite: {str(error)}",
+        ) from error
 
     datasets = etos.dataset
     if isinstance(datasets, list):
