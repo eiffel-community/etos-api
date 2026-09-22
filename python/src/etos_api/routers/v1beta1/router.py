@@ -47,7 +47,7 @@ START_LABELS = {"endpoint": API, "operation": OPERATIONS.start_testrun.name}
 # a high cardinality metric. Therefore we use the literal string "{suite_id}".
 STOP_LABELS = {"endpoint": f"{API}/{{suite_id}}", "operation": OPERATIONS.stop_testrun.name}
 SUBSUITE_LABELS = {
-    "endpoint": f"{API}/{{suite_id}}",
+    "endpoint": f"{API}/{{sub_suite_id}}",
     "operation": OPERATIONS.get_subsuite.name,
 }
 
