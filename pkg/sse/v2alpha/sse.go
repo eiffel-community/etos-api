@@ -182,6 +182,12 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 		}
 	}
 
+	if h.ctx.Err() != nil {
+		logger.Info("Shutting down, not starting a new stream")
+		http.Error(w, "server is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	filter := r.Form["filter"]
 	h.cleanFilter(identifier, filter)
 
@@ -210,8 +216,11 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 			logger.Info("Client gone from SSE")
 			return
 		case <-h.ctx.Done():
-			logger.Info("Shutting down")
-			return
+			// Abort the response instead of ending it, so that clients see a broken
+			// connection and reconnect with Last-Event-ID, as they do when a server
+			// stops. Released clients do not reconnect after a cleanly ended stream.
+			logger.Info("Shutting down, aborting stream")
+			panic(http.ErrAbortHandler)
 		case event, ok := <-receiver:
 			if !ok {
 				return

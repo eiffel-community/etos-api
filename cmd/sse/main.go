@@ -104,11 +104,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	v2AlphaSSE := v2alpha.New(ctx, cfg, log, streamer)
+	// v2alphaCtx is canceled when the webservice starts shutting down so that active
+	// v2alpha event streams end instead of keeping the graceful shutdown waiting.
+	v2alphaCtx, stopV2alphaStreams := context.WithCancel(ctx)
+	defer stopV2alphaStreams()
+	v2AlphaSSE := v2alpha.New(v2alphaCtx, cfg, log, streamer)
 	defer v2AlphaSSE.Close()
 	app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
 
 	srv := server.NewWebService(cfg, log, app)
+	srv.OnShutdown(func() {
+		log.Info("Stopping active v2alpha event streams")
+		stopV2alphaStreams()
+	})
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)

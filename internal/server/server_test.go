@@ -17,8 +17,10 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/eiffel-community/etos-api/test/testconfig"
 	"github.com/sirupsen/logrus"
@@ -32,4 +34,21 @@ func TestNewWebService(t *testing.T) {
 	cfg := testconfig.Get("", "", "", "", "")
 	webserver := NewWebService(cfg, log, http.Handler(nil))
 	assert.Implements(t, (*Server)(nil), webserver)
+}
+
+// TestWebServiceOnShutdown tests that functions registered with OnShutdown are called when
+// the webservice is closed.
+func TestWebServiceOnShutdown(t *testing.T) {
+	log := logrus.NewEntry(logrus.New())
+	cfg := testconfig.Get("", "", "", "", "")
+	webserver := NewWebService(cfg, log, http.Handler(nil))
+	called := make(chan struct{})
+	webserver.OnShutdown(func() { close(called) })
+
+	assert.NoError(t, webserver.Close(context.Background()))
+	select {
+	case <-called:
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnShutdown function was not called on Close")
+	}
 }
