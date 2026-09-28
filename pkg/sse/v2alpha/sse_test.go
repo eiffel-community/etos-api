@@ -23,11 +23,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/stream"
+	"github.com/eiffel-community/etos-api/pkg/events"
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -143,4 +146,218 @@ func TestSSEGetEventsStreamUnavailable(t *testing.T) {
 	body := responseRecorder.Body.String()
 	assert.Equal(t, "event stream is temporarily unavailable\n", body)
 	assert.NotContains(t, body, "rabbitmq.internal")
+}
+
+type controlledStreamer struct {
+	stream *controlledStream
+}
+
+// NewStream returns the test stream.
+func (s *controlledStreamer) NewStream(context.Context, *logrus.Entry, string) (stream.Stream, error) {
+	return s.stream, nil
+}
+
+// CreateStream is not needed by this test streamer.
+func (s *controlledStreamer) CreateStream(context.Context, *logrus.Entry, string) error { return nil }
+
+// Close is not needed by this test streamer.
+func (s *controlledStreamer) Close() {}
+
+type controlledStream struct {
+	channel      chan<- []byte
+	channelReady chan struct{}
+	closed       chan struct{}
+	once         sync.Once
+}
+
+// WithChannel records the channel used to forward data.
+func (s *controlledStream) WithChannel(ch chan<- []byte) stream.Stream {
+	s.channel = ch
+	close(s.channelReady)
+	return s
+}
+
+// WithOffset keeps the existing test stream.
+func (s *controlledStream) WithOffset(int) stream.Stream { return s }
+
+// WithFilter keeps the existing test stream.
+func (s *controlledStream) WithFilter([]string) stream.Stream { return s }
+
+// Consume starts a test subscription without contacting RabbitMQ.
+func (s *controlledStream) Consume(context.Context) (<-chan error, error) {
+	return make(chan error), nil
+}
+
+// Close records when the subscriber releases its consumer.
+func (s *controlledStream) Close() {
+	s.once.Do(func() { close(s.closed) })
+}
+
+type failingWriter struct {
+	httptest.ResponseRecorder
+	written chan struct{}
+}
+
+type blockingWriter struct {
+	httptest.ResponseRecorder
+	entered chan struct{}
+	release chan struct{}
+}
+
+// Write waits until the test releases its simulated slow client.
+func (w *blockingWriter) Write(data []byte) (int, error) {
+	select {
+	case <-w.entered:
+	default:
+		close(w.entered)
+	}
+	<-w.release
+	return w.ResponseRecorder.Write(data)
+}
+
+// Write reports a failed response and signals the test.
+func (w *failingWriter) Write([]byte) (int, error) {
+	close(w.written)
+	return 0, errors.New("client disconnected")
+}
+
+// TestSubscribeCancelUnblocksEventSend checks that an unbuffered send to the
+// handler stops on cancellation and the stream consumer is released.
+func TestSubscribeCancelUnblocksEventSend(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &controlledStream{closed: make(chan struct{}), channelReady: make(chan struct{})}
+	receiver := make(chan events.Event)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		(Handler{}).subscribe(ctx, logrus.NewEntry(logrus.New()), s, receiver, 1, nil)
+	}()
+	select {
+	case <-s.channelReady:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not start")
+	}
+	sent := make(chan struct{})
+	go func() {
+		s.channel <- []byte(`{"event":"message","data":{"message":"hello","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
+		close(sent)
+	}()
+	select {
+	case <-sent:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not receive the message")
+	}
+	cancel()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber blocked sending to the disconnected handler")
+	}
+	select {
+	case <-s.closed:
+	default:
+		t.Fatal("stream consumer was not closed")
+	}
+}
+
+// TestGetEventsWriteFailureClosesStream checks that a failed HTTP write ends
+// the request and closes its stream instead of continuing to consume.
+func TestGetEventsWriteFailureClosesStream(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	s := &controlledStream{closed: make(chan struct{}), channelReady: make(chan struct{})}
+	h := Handler{logger: logrus.NewEntry(logrus.New()), ctx: context.Background(), streamer: &controlledStreamer{stream: s}}
+	w := &failingWriter{written: make(chan struct{})}
+	request := httptest.NewRequest(http.MethodGet, "/sse/v2alpha/events/run", nil).WithContext(ctx)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		h.GetEvents(w, request, httprouter.Params{{Key: "identifier", Value: "run"}})
+	}()
+	select {
+	case <-s.channelReady:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not start")
+	}
+
+	sent := make(chan struct{})
+	go func() {
+		s.channel <- []byte(`{"event":"message","data":{"message":"hello","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
+		close(sent)
+	}()
+	select {
+	case <-sent:
+	case <-time.After(time.Second):
+		t.Fatal("subscriber did not receive the message")
+	}
+	select {
+	case <-w.written:
+	case <-time.After(time.Second):
+		t.Fatal("writer was not called")
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("handler continued after a failed write")
+	}
+	select {
+	case <-s.closed:
+	case <-time.After(time.Second):
+		t.Fatal("stream consumer was not closed")
+	}
+}
+
+// TestGetEventsShutdownWithSlowWriters verifies that application shutdown releases
+// every subscription even while HTTP writers are blocked by slow clients.
+func TestGetEventsShutdownWithSlowWriters(t *testing.T) {
+	before := runtime.NumGoroutine()
+	appCtx, shutdown := context.WithCancel(context.Background())
+	const clients = 32
+	streams := make([]*controlledStream, clients)
+	writers := make([]*blockingWriter, clients)
+	finished := make([]chan struct{}, clients)
+	for i := range streams {
+		s := &controlledStream{closed: make(chan struct{}), channelReady: make(chan struct{})}
+		streams[i] = s
+		w := &blockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
+		writers[i] = w
+		finished[i] = make(chan struct{})
+		h := Handler{logger: logrus.NewEntry(logrus.New()), ctx: appCtx, streamer: &controlledStreamer{stream: s}}
+		go func(done chan struct{}) {
+			defer close(done)
+			h.GetEvents(w, httptest.NewRequest(http.MethodGet, "/sse/v2alpha/events/run", nil),
+				httprouter.Params{{Key: "identifier", Value: "run"}})
+		}(finished[i])
+		select {
+		case <-s.channelReady:
+		case <-time.After(time.Second):
+			t.Fatal("subscriber did not start")
+		}
+		s.channel <- []byte(`{"event":"message","data":{"message":"hello","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
+		select {
+		case <-w.entered:
+		case <-time.After(time.Second):
+			t.Fatal("writer did not receive the event")
+		}
+	}
+	for _, s := range streams {
+		s.channel <- []byte(`{"event":"message","data":{"message":"again","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
+	}
+	shutdown()
+	for i, s := range streams {
+		select {
+		case <-s.closed:
+		case <-time.After(time.Second):
+			t.Errorf("subscriber %d did not close on shutdown", i)
+		}
+		close(writers[i].release)
+		select {
+		case <-finished[i]:
+		case <-time.After(time.Second):
+			t.Errorf("handler %d did not finish after writer unblocked", i)
+		}
+	}
+	after := runtime.NumGoroutine()
+	t.Logf("slow-writer churn: %d concurrent subscriptions; goroutines before=%d after=%d", clients, before, after)
+	assert.LessOrEqual(t, after, before+2)
 }
