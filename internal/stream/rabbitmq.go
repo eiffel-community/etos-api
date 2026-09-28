@@ -84,7 +84,14 @@ func (s *RabbitMQStreamer) NewStream(ctx context.Context, logger *logrus.Entry, 
 		SetConsumerName(name).
 		SetCRCCheck(false).
 		SetOffset(stream.OffsetSpecification{}.First())
-	return &RabbitMQStream{ctx: ctx, logger: logger, streamName: s.streamName, environment: s.environment, options: options}, nil
+	return &RabbitMQStream{
+		ctx:         ctx,
+		logger:      logger,
+		streamName:  s.streamName,
+		identifier:  name,
+		environment: s.environment,
+		options:     options,
+	}, nil
 }
 
 // Close the RabbitMQ connection.
@@ -101,6 +108,7 @@ type RabbitMQStream struct {
 	ctx         context.Context
 	logger      *logrus.Entry
 	streamName  string
+	identifier  string
 	environment *stream.Environment
 	options     *stream.ConsumerOptions
 	consumer    *stream.Consumer
@@ -138,13 +146,7 @@ func (s *RabbitMQStream) WithFilter(filter []string) Stream {
 // an error is sent when the consumer closes down.
 func (s *RabbitMQStream) Consume(ctx context.Context) (<-chan error, error) {
 	handler := func(_ stream.ConsumerContext, message *amqp.Message) {
-		for _, d := range message.Data {
-			if s.channel != nil {
-				s.channel <- d
-			} else {
-				s.logger.Debug(d)
-			}
-		}
+		s.handleMessage(message)
 	}
 	consumer, err := s.environment.NewConsumer(s.streamName, handler, s.options)
 	if err != nil {
@@ -154,6 +156,22 @@ func (s *RabbitMQStream) Consume(ctx context.Context) (<-chan error, error) {
 	closed := make(chan error)
 	go s.notifyClose(ctx, closed)
 	return closed, nil
+}
+
+// handleMessage forwards message data from the consumer callback. RabbitMQ applies postFilter
+// before this callback only when optional filters are configured, so unfiltered streams apply
+// the identifier check here.
+func (s *RabbitMQStream) handleMessage(message *amqp.Message) {
+	if len(s.filter) == 0 && !s.postFilter(message) {
+		return
+	}
+	for _, d := range message.Data {
+		if s.channel != nil {
+			s.channel <- d
+		} else {
+			s.logger.Debug(d)
+		}
+	}
 }
 
 // notifyClose will keep track of context and the notify close channel from RabbitMQ and send
@@ -182,10 +200,13 @@ func (s *RabbitMQStream) Close() {
 // match the filter, this is expected as the RabbitMQ unit of delivery is the chunk and there may
 // be multiple messages in a chunk and those messages are not filtered.
 func (s *RabbitMQStream) postFilter(message *amqp.Message) bool {
-	if s.filter == nil {
-		return true // Unfiltered
+	identifier, ok := message.ApplicationProperties["identifier"].(string)
+	if !ok || identifier != s.identifier {
+		return false
 	}
-	identifier := message.ApplicationProperties["identifier"]
+	if len(s.filter) == 0 {
+		return true
+	}
 	eventType := message.ApplicationProperties["type"]
 	eventMeta := message.ApplicationProperties["meta"]
 	name := fmt.Sprintf("%s.%s.%s", identifier, eventType, eventMeta)
