@@ -161,7 +161,11 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
         datasets = [datasets] * len(testrun_spec.suites)
 
     for suite in testrun_spec.suites:
-        suite.dataset.update(datasets.pop(0))
+        dataset = datasets.pop(0)
+        if suite.dataset is None:
+            suite.dataset = dict(dataset)
+        else:
+            suite.dataset.update(dataset)
 
     artifact = await testrun.wait_for_artifact(str(etos.artifact_id), etos.artifact_identity)
     testrun_name = await testrun.generate_name(testrun_spec.name)
