@@ -85,7 +85,6 @@ func (s *RabbitMQStreamer) NewStream(ctx context.Context, logger *logrus.Entry, 
 		SetCRCCheck(false).
 		SetOffset(stream.OffsetSpecification{}.First())
 	return &RabbitMQStream{
-		ctx:         ctx,
 		logger:      logger,
 		streamName:  s.streamName,
 		identifier:  name,
@@ -105,7 +104,6 @@ func (s *RabbitMQStreamer) Close() {
 // RabbitMQStream is a structure implementing the Stream interface. Used to consume events
 // from a RabbitMQ stream.
 type RabbitMQStream struct {
-	ctx         context.Context
 	logger      *logrus.Entry
 	streamName  string
 	identifier  string
@@ -146,43 +144,48 @@ func (s *RabbitMQStream) WithFilter(filter []string) Stream {
 // an error is sent when the consumer closes down.
 func (s *RabbitMQStream) Consume(ctx context.Context) (<-chan error, error) {
 	handler := func(_ stream.ConsumerContext, message *amqp.Message) {
-		s.handleMessage(message)
+		s.handleMessage(ctx, message)
 	}
 	consumer, err := s.environment.NewConsumer(s.streamName, handler, s.options)
 	if err != nil {
 		return nil, err
 	}
 	s.consumer = consumer
-	closed := make(chan error)
-	go s.notifyClose(ctx, closed)
+	closed := make(chan error, 1)
+	go notifyClose(ctx, consumer.NotifyClose(), closed)
 	return closed, nil
 }
 
 // handleMessage forwards message data from the consumer callback. RabbitMQ applies postFilter
 // before this callback only when optional filters are configured, so unfiltered streams apply
 // the identifier check here.
-func (s *RabbitMQStream) handleMessage(message *amqp.Message) {
+func (s *RabbitMQStream) handleMessage(ctx context.Context, message *amqp.Message) {
 	if len(s.filter) == 0 && !s.postFilter(message) {
 		return
 	}
 	for _, d := range message.Data {
 		if s.channel != nil {
-			s.channel <- d
+			select {
+			case s.channel <- d:
+			case <-ctx.Done():
+				return
+			}
 		} else {
 			s.logger.Debug(d)
 		}
 	}
 }
 
-// notifyClose will keep track of context and the notify close channel from RabbitMQ and send
-// error on a channel.
-func (s *RabbitMQStream) notifyClose(ctx context.Context, ch chan<- error) {
-	closed := s.consumer.NotifyClose()
+// notifyClose forwards a broker close unless the subscription has ended.
+func notifyClose(ctx context.Context, closed stream.ChannelClose, ch chan<- error) {
 	select {
 	case <-ctx.Done():
-		ch <- ctx.Err()
+		return
 	case event := <-closed:
-		ch <- event.Err
+		select {
+		case ch <- event.Err:
+		case <-ctx.Done():
+		}
 	}
 }
 
