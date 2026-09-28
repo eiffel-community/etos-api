@@ -17,6 +17,7 @@ package sse
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -105,4 +106,41 @@ func TestSSEGetEventsDropsInvalid(t *testing.T) {
 	assert.NoError(t, err)
 	// The invalid event is dropped, so no data event is written to the client.
 	assert.NotContains(t, string(body), "hello world")
+}
+
+// unavailableStreamer is a stream.Streamer whose NewStream always fails, simulating a
+// broker that cannot be reached when a client subscribes.
+type unavailableStreamer struct {
+	err error
+}
+
+// NewStream returns the configured error.
+func (s unavailableStreamer) NewStream(context.Context, *logrus.Entry, string) (stream.Stream, error) {
+	return nil, s.err
+}
+
+// CreateStream does nothing.
+func (s unavailableStreamer) CreateStream(context.Context, *logrus.Entry, string) error {
+	return nil
+}
+
+// Close does nothing.
+func (s unavailableStreamer) Close() {}
+
+// TestSSEGetEventsStreamUnavailable tests that a failure to open a stream is reported as
+// a retryable 503 Service Unavailable, without leaking the backend error to the client.
+func TestSSEGetEventsStreamUnavailable(t *testing.T) {
+	backendErr := errors.New("dial tcp rabbitmq.internal:5552: connection refused")
+	log := logrus.WithFields(logrus.Fields{})
+	handler := Handler{log, &cfg{}, context.Background(), unavailableStreamer{err: backendErr}}
+	responseRecorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/v2alpha/events/test_sse_stream_unavailable", nil)
+	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: "test_sse_stream_unavailable"}}
+	handler.GetEvents(responseRecorder, request, ps)
+
+	assert.Equal(t, http.StatusServiceUnavailable, responseRecorder.Code)
+	assert.Equal(t, "text/plain; charset=utf-8", responseRecorder.Header().Get("Content-Type"))
+	body := responseRecorder.Body.String()
+	assert.Equal(t, "event stream is temporarily unavailable\n", body)
+	assert.NotContains(t, body, "rabbitmq.internal")
 }

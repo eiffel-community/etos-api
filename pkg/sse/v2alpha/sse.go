@@ -187,9 +187,10 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 
 	streamer, err := h.streamer.NewStream(r.Context(), logger, identifier)
 	if err != nil {
+		// Failing to open a stream is a server-side (broker) failure and not caused by the
+		// client request, so report it as retryable and keep the details out of the response.
 		logger.WithError(err).Error("Could not start a new stream")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(err.Error()))
+		http.Error(w, "event stream is temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
