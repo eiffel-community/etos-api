@@ -88,10 +88,12 @@ func (s *FileStream) WithFilter(filter []string) Stream {
 // Consume will start consuming the file, non blocking. A channel is returned where
 // an error is sent when the consumer closes down.
 func (s *FileStream) Consume(ctx context.Context) (<-chan error, error) {
-	closed := make(chan error)
+	closed := make(chan error, 1)
 	go func() {
+		defer close(closed)
 		scanner := bufio.NewReader(s.file)
 		interval := time.NewTicker(s.interval)
+		defer interval.Stop()
 		for {
 			select {
 			case <-ctx.Done():
@@ -112,11 +114,18 @@ func (s *FileStream) Consume(ctx context.Context) (<-chan error, error) {
 					if errors.Is(err, io.EOF) {
 						continue
 					}
-					closed <- err
+					select {
+					case closed <- err:
+					case <-ctx.Done():
+					}
 					return
 				}
 				if s.channel != nil {
-					s.channel <- event
+					select {
+					case s.channel <- event:
+					case <-ctx.Done():
+						return
+					}
 				} else {
 					s.logger.Info(event)
 				}
