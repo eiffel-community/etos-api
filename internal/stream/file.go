@@ -21,6 +21,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -48,7 +49,7 @@ func (s *FileStreamer) NewStream(ctx context.Context, logger *logrus.Entry, name
 	if err != nil {
 		return nil, err
 	}
-	return &FileStream{ctx: ctx, file: file, interval: s.interval, logger: logger}, nil
+	return &FileStream{ctx: ctx, name: name, file: file, interval: s.interval, logger: logger}, nil
 }
 
 // Close does nothing.
@@ -56,26 +57,30 @@ func (s *FileStreamer) Close() {}
 
 // FileStream is a structure implementing the Stream interface. Used to consume events
 // from a file.
+// Each line in the file is a message and its offset is the zero-based line number.
 type FileStream struct {
 	ctx      context.Context
 	logger   *logrus.Entry
+	name     string
 	file     io.ReadCloser
 	interval time.Duration
-	offset   int
-	channel  chan<- []byte
+	start    int64
+	position atomic.Int64
+	channel  chan<- Message
 	filter   []string
 }
 
 // WithChannel adds a channel for receiving events from the stream. If no
 // channel is added, then events will be logged.
-func (s *FileStream) WithChannel(ch chan<- []byte) Stream {
+func (s *FileStream) WithChannel(ch chan<- Message) Stream {
 	s.channel = ch
 	return s
 }
 
-// WithOffset adds an offset to the file stream. -1 means start from the beginning.
-func (s *FileStream) WithOffset(offset int) Stream {
-	s.logger.Warning("offset is not yet supported by file stream")
+// WithOffset adds an offset to the file stream. OffsetFirst means start from the beginning.
+func (s *FileStream) WithOffset(offset int64) Stream {
+	s.start = max(offset, 0)
+	s.position.Store(s.start)
 	return s
 }
 
@@ -92,6 +97,7 @@ func (s *FileStream) Consume(ctx context.Context) (<-chan error, error) {
 	go func() {
 		scanner := bufio.NewReader(s.file)
 		interval := time.NewTicker(s.interval)
+		var offset int64
 		for {
 			select {
 			case <-ctx.Done():
@@ -115,15 +121,37 @@ func (s *FileStream) Consume(ctx context.Context) (<-chan error, error) {
 					closed <- err
 					return
 				}
+				offset++
+				if offset-1 < s.start {
+					continue
+				}
 				if s.channel != nil {
-					s.channel <- event
+					s.channel <- Message{Offset: offset - 1, Data: event}
 				} else {
 					s.logger.Info(event)
 				}
+				s.position.Store(offset)
 			}
 		}
 	}()
 	return closed, nil
+}
+
+// FirstOffset returns 0, the offset of the first line, unless the file is empty.
+func (s *FileStream) FirstOffset() (int64, error) {
+	info, err := os.Stat(s.name)
+	if err != nil {
+		return 0, err
+	}
+	if info.Size() == 0 {
+		return 0, ErrEmptyStream
+	}
+	return 0, nil
+}
+
+// Position returns the offset of the next line to be read from the file.
+func (s *FileStream) Position() int64 {
+	return s.position.Load()
 }
 
 // Close the file.

@@ -18,6 +18,7 @@ package sse
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -34,7 +35,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const pingInterval = 15 * time.Second
+// pingInterval is a variable so that tests can shorten it.
+var pingInterval = 15 * time.Second
 
 type Application struct {
 	logger   *logrus.Entry
@@ -97,24 +99,78 @@ type ErrorEvent struct {
 	Reason string `json:"reason"`
 }
 
+// Reasons for non-retryable errors when resuming a stream.
+const (
+	reasonExpired = "events after the requested Last-Event-ID have expired from the event stream"
+	reasonUnknown = "the requested Last-Event-ID is unknown to the event stream"
+)
+
+// sendError sends an error event, with a retry hint, to the client.
+func sendError(ch chan<- events.Event, retry bool, reason string) {
+	b, _ := json.Marshal(ErrorEvent{Retry: retry, Reason: reason})
+	ch <- events.Event{Event: "error", Data: string(b)}
+}
+
+// resumeOffset returns the stream offset to start consuming from for a client that last received
+// the event with ID lastID, where 0 means that no event has been received. Event IDs are stream
+// offsets plus one, so the last event ID is also the offset of the next message to consume.
+// A non-empty reason is returned if the stream cannot be resumed.
+func resumeOffset(streamer stream.Stream, lastID int64) (offset int64, retry bool, reason string, err error) {
+	if lastID <= 0 {
+		return stream.OffsetFirst, false, "", nil
+	}
+	first, err := streamer.FirstOffset()
+	if errors.Is(err, stream.ErrEmptyStream) {
+		return 0, false, reasonUnknown, err
+	}
+	if err != nil {
+		return 0, true, "failed to query the event stream", err
+	}
+	if first > lastID {
+		return 0, false, reasonExpired, fmt.Errorf("first offset in stream is %d, want %d", first, lastID)
+	}
+	return lastID, false, "", nil
+}
+
 // subscribe subscribes to stream and gets logs and events from it and writes them to a channel.
-func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer stream.Stream, ch chan<- events.Event, lastID int, filter []string) {
+//
+// The ID of each event is the offset of its message in the stream plus one, which makes the ID
+// the offset to resume from. The ID 0 cannot be used because it is not written on the wire and
+// clients use it to mean that no event has been received, so a client that has received the
+// message at offset 0 could not be told apart from a new client. Pings carry the ID of the
+// stream position when it is greater than the last ID sent, which lets clients resume after
+// messages that were filtered out.
+func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer stream.Stream, ch chan<- events.Event, lastID int64, filter []string) {
 	defer close(ch)
 	var err error
 
-	consumeCh := make(chan []byte, 0)
+	offset, retry, reason, err := resumeOffset(streamer, lastID)
+	if reason != "" {
+		logger.WithError(err).WithField("lastEventID", lastID).Error("Could not resume the event stream")
+		sendError(ch, retry, reason)
+		return
+	}
 
-	offset := -1
-	counter := 1 // lastID will default to 1 and the first event will be 1
+	// The channel must be unbuffered for the Position of the stream to be correct.
+	consumeCh := make(chan stream.Message)
 
 	closed, err := streamer.WithChannel(consumeCh).WithOffset(offset).WithFilter(filter).Consume(ctx)
 	if err != nil {
 		logger.WithError(err).Error("failed to start consuming stream")
-		b, _ := json.Marshal(ErrorEvent{Retry: false, Reason: err.Error()})
-		ch <- events.Event{Event: "error", Data: string(b)}
+		sendError(ch, true, "failed to consume the event stream")
 		return
 	}
 	defer streamer.Close()
+
+	// Retention may have removed the requested offset after it was checked, in which case the
+	// consumer silently starts at the new first offset.
+	if offset != stream.OffsetFirst {
+		if _, _, reason, err := resumeOffset(streamer, lastID); reason == reasonExpired {
+			logger.WithError(err).WithField("lastEventID", lastID).Error("Could not resume the event stream")
+			sendError(ch, false, reason)
+			return
+		}
+	}
 
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
@@ -125,32 +181,31 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 			logger.Info("Client lost, closing subscriber")
 			return
 		case <-ping.C:
-			ch <- events.Event{Event: "ping"}
+			event = events.Event{Event: "ping"}
+			// Every message below the position has already been sent on ch, or filtered out,
+			// so a client resuming from here will not miss any events.
+			if position := streamer.Position(); position > lastID {
+				event.ID = int(position)
+				lastID = position
+			}
+			ch <- event
 		case <-closed:
 			logger.Info("Stream closed, closing down")
-			b, _ := json.Marshal(ErrorEvent{Retry: true, Reason: "Streamer closed the connection"})
-			ch <- events.Event{Event: "error", Data: string(b)}
+			sendError(ch, true, "Streamer closed the connection")
 			return
 		case msg := <-consumeCh:
-			// We have no reliable way of getting a specific offset on the SSE stream so
-			// we will need to iterate all events until we reach the last known ID.
-			if counter < lastID {
-				counter++
-				continue
-			}
-
-			event, err = events.New(msg)
+			event, err = events.New(msg.Data)
 			if err != nil {
 				logger.WithError(err).Error("failed to parse SSE event")
 				continue
 			}
-			if err := schema.Validate(msg); err != nil {
+			if err := schema.Validate(msg.Data); err != nil {
 				logger.WithError(err).Warning("dropping SSE event that does not match the protocol")
 				continue
 			}
-			event.ID = counter
+			event.ID = int(msg.Offset + 1)
+			lastID = msg.Offset + 1
 			ch <- event
-			counter++
 		}
 	}
 }
@@ -172,13 +227,14 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	lastID := 1
+	var lastID int64
 	lastEventID := r.Header.Get("Last-Event-ID")
 	if lastEventID != "" {
 		var err error
-		lastID, err = strconv.Atoi(lastEventID)
-		if err != nil {
-			logger.Error("Last-Event-ID header is not parsable")
+		lastID, err = strconv.ParseInt(lastEventID, 10, 64)
+		if err != nil || lastID < 0 {
+			logger.Error("Last-Event-ID header is not parsable, streaming from the start")
+			lastID = 0
 		}
 	}
 
@@ -201,8 +257,16 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 	}
 	logger.Info("Client connected to SSE")
 
+	ctx, cancel := context.WithCancel(r.Context())
 	receiver := make(chan events.Event) // Channel is closed in Subscriber
-	go h.subscribe(r.Context(), logger, streamer, receiver, lastID, filter)
+	go h.subscribe(ctx, logger, streamer, receiver, lastID, filter)
+	defer func() {
+		// Stop the subscriber and drain the channel so that it never blocks on a send, and has
+		// closed its stream, when this handler returns.
+		cancel()
+		for range receiver {
+		}
+	}()
 
 	for {
 		select {
