@@ -35,7 +35,7 @@ func TestFileStreamCancelUnblocksSend(t *testing.T) {
 	require.NoError(t, err)
 	s := &FileStream{file: file, logger: logrus.NewEntry(logrus.New()), interval: time.Millisecond}
 	defer s.Close()
-	s.WithChannel(make(chan []byte))
+	s.WithChannel(make(chan Message))
 	ctx, cancel := context.WithCancel(context.Background())
 	done, err := s.Consume(ctx)
 	require.NoError(t, err)
