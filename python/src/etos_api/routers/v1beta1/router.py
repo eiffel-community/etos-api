@@ -26,7 +26,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Span
 from starlette.responses import Response
 
-from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, REQUEST_TIME
+from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, TIME_REQUESTS
 from etos_api.library.opentelemetry import context
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
@@ -57,9 +57,9 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 # pylint:disable=too-many-locals,too-many-statements
 
 
-@REQUEST_TIME.labels(**START_LABELS).time()
-@COUNT_REQUESTS(START_LABELS, LOGGER)
 @ETOSV1BETA1.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
+@TIME_REQUESTS(START_LABELS)
+@COUNT_REQUESTS(START_LABELS, LOGGER)
 async def start_testrun(
     etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
 ) -> dict:
@@ -76,9 +76,9 @@ async def start_testrun(
         return await _create_testrun(etos, span, otel_context.get_current())
 
 
-@REQUEST_TIME.labels(**STOP_LABELS).time()
-@COUNT_REQUESTS(STOP_LABELS, LOGGER)
 @ETOSV1BETA1.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
+@TIME_REQUESTS(STOP_LABELS)
+@COUNT_REQUESTS(STOP_LABELS, LOGGER)
 async def abort_testrun(
     suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]
 ) -> dict:
@@ -98,9 +98,9 @@ async def abort_testrun(
 # The key {suite_id} is supposed to indicate that this is a path parameter, but
 # we don't want to set the actual value in the metrics label since that would create
 # a high cardinality metric. Therefore we use the literal string "{sub_suite_id}".
-@REQUEST_TIME.labels(**SUBSUITE_LABELS).time()
-@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER)
 @ETOSV1BETA1.get("/testrun/{sub_suite_id}", tags=["etos"])
+@TIME_REQUESTS(SUBSUITE_LABELS)
+@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER)
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
 
