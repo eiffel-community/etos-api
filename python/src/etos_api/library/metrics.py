@@ -45,6 +45,24 @@ REQUESTS_TOTAL = Counter(
 
 
 # I like the idea of all operations in this file is upper-case.
+def TIME_REQUESTS(labels: dict):  # pylint:disable=invalid-name
+    """Observe the request duration of a coroutine route using the REQUEST_TIME histogram.
+
+    The decorator returned by prometheus_client's ``Histogram.time`` does not await
+    coroutines, so it would only measure the creation of the coroutine.
+    """
+
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            with REQUEST_TIME.labels(**labels).time():
+                return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def COUNT_REQUESTS(labels: dict, logger: Logger):  # pylint:disable=invalid-name
     """Count number of requests to server using the REQUESTS_TOTAL counter."""
 
