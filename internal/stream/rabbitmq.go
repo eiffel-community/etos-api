@@ -16,6 +16,7 @@
 package stream
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -110,23 +111,26 @@ type RabbitMQStream struct {
 	environment *stream.Environment
 	options     *stream.ConsumerOptions
 	consumer    *stream.Consumer
-	channel     chan<- []byte
+	channel     chan<- Message
 	filter      []string
+	start       int64
 }
 
 // WithChannel adds a channel for receiving events from the stream. If no
 // channel is added, then events will be logged.
-func (s *RabbitMQStream) WithChannel(ch chan<- []byte) Stream {
+func (s *RabbitMQStream) WithChannel(ch chan<- Message) Stream {
 	s.channel = ch
 	return s
 }
 
-// WithOffset adds an offset to the RabbitMQ stream. -1 means start from the beginning.
-func (s *RabbitMQStream) WithOffset(offset int) Stream {
-	if offset == -1 {
+// WithOffset adds an offset to the RabbitMQ stream. OffsetFirst means start from the beginning.
+func (s *RabbitMQStream) WithOffset(offset int64) Stream {
+	if offset < 0 {
+		s.start = 0
 		s.options = s.options.SetOffset(stream.OffsetSpecification{}.First())
 	} else {
-		s.options = s.options.SetOffset(stream.OffsetSpecification{}.Offset(int64(offset)))
+		s.start = offset
+		s.options = s.options.SetOffset(stream.OffsetSpecification{}.Offset(offset))
 	}
 	return s
 }
@@ -143,8 +147,10 @@ func (s *RabbitMQStream) WithFilter(filter []string) Stream {
 // Consume will start consuming the RabbitMQ stream, non blocking. A channel is returned where
 // an error is sent when the consumer closes down.
 func (s *RabbitMQStream) Consume(ctx context.Context) (<-chan error, error) {
-	handler := func(_ stream.ConsumerContext, message *amqp.Message) {
-		s.handleMessage(ctx, message)
+	handler := func(consumerContext stream.ConsumerContext, message *amqp.Message) {
+		// The consumer sets its current offset to the offset of a message before invoking
+		// the handler for it.
+		s.handleMessage(ctx, consumerContext.Consumer.GetOffset(), message)
 	}
 	consumer, err := s.environment.NewConsumer(s.streamName, handler, s.options)
 	if err != nil {
@@ -159,21 +165,49 @@ func (s *RabbitMQStream) Consume(ctx context.Context) (<-chan error, error) {
 // handleMessage forwards message data from the consumer callback. RabbitMQ applies postFilter
 // before this callback only when optional filters are configured, so unfiltered streams apply
 // the identifier check here.
-func (s *RabbitMQStream) handleMessage(ctx context.Context, message *amqp.Message) {
+//
+// The data sections of a message are concatenated into a single message, since an offset
+// identifies a single message in the stream.
+func (s *RabbitMQStream) handleMessage(ctx context.Context, offset int64, message *amqp.Message) {
 	if len(s.filter) == 0 && !s.postFilter(message) {
 		return
 	}
-	for _, d := range message.Data {
-		if s.channel != nil {
-			select {
-			case s.channel <- d:
-			case <-ctx.Done():
-				return
-			}
-		} else {
-			s.logger.Debug(d)
-		}
+	if len(message.Data) == 0 {
+		return
 	}
+	data := bytes.Join(message.Data, nil)
+	if s.channel != nil {
+		// Don't block the consumer forever if the receiver has stopped consuming.
+		select {
+		case s.channel <- Message{Offset: offset, Data: data}:
+		case <-ctx.Done():
+		}
+	} else {
+		s.logger.Debug(data)
+	}
+}
+
+// FirstOffset returns the offset of the first message retained in the RabbitMQ stream.
+func (s *RabbitMQStream) FirstOffset() (int64, error) {
+	stats, err := s.environment.StreamStats(s.streamName)
+	if err != nil {
+		return 0, err
+	}
+	first, err := stats.FirstOffset()
+	if err != nil {
+		return 0, errors.Join(err, ErrEmptyStream)
+	}
+	return first, nil
+}
+
+// Position returns the offset of the message that the consumer is currently dispatching. The
+// consumer dispatches messages one at a time, and the handler blocks until the message has been
+// received from the channel, so every message below this offset has been received or filtered out.
+func (s *RabbitMQStream) Position() int64 {
+	if s.consumer == nil {
+		return s.start
+	}
+	return max(s.start, s.consumer.GetOffset())
 }
 
 // notifyClose forwards a broker close unless the subscription has ended.

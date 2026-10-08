@@ -74,7 +74,7 @@ func TestRabbitMQStreamHandleMessageScopesToIdentifier(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			received := make(chan []byte, 1)
+			received := make(chan Message, 1)
 			s := &RabbitMQStream{
 				logger:     logrus.NewEntry(logrus.New()),
 				identifier: "run-a",
@@ -93,11 +93,11 @@ func TestRabbitMQStreamHandleMessageScopesToIdentifier(t *testing.T) {
 			}
 			// The RabbitMQ client runs the configured post-filter before invoking the callback.
 			if s.options.Filter == nil || s.options.Filter.PostFilter(message) {
-				s.handleMessage(context.Background(), message)
+				s.handleMessage(context.Background(), 42, message)
 			}
 
 			if tt.want {
-				assert.Equal(t, []byte("event payload"), <-received)
+				assert.Equal(t, Message{Offset: 42, Data: []byte("event payload")}, <-received)
 			} else {
 				assert.Empty(t, received)
 			}
@@ -111,12 +111,12 @@ func TestRabbitMQStreamHandleMessageCancelUnblocksSend(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &RabbitMQStream{
 		identifier: "run-a",
-		channel:    make(chan []byte),
+		channel:    make(chan Message),
 	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		s.handleMessage(ctx, &amqp.Message{
+		s.handleMessage(ctx, 0, &amqp.Message{
 			ApplicationProperties: map[string]any{"identifier": "run-a"},
 			Data:                  [][]byte{[]byte("payload")},
 		})
@@ -168,4 +168,32 @@ func TestNotifyCloseForwardsBrokerError(t *testing.T) {
 		t.Fatal("close notifier blocked without a waiting subscriber")
 	}
 	assert.ErrorIs(t, <-result, brokerErr)
+}
+
+// TestRabbitMQStreamHandleMessageJoinsDataSections tests that a message with several data
+// sections is forwarded as a single message, since the offset identifies the whole message.
+func TestRabbitMQStreamHandleMessageJoinsDataSections(t *testing.T) {
+	received := make(chan Message, 2)
+	s := &RabbitMQStream{
+		logger:     logrus.NewEntry(logrus.New()),
+		identifier: "run-a",
+		options:    stream.NewConsumerOptions(),
+	}
+	s.WithChannel(received)
+	s.handleMessage(context.Background(), 7, &amqp.Message{
+		ApplicationProperties: map[string]any{"identifier": "run-a"},
+		Data:                  [][]byte{[]byte(`{"event":`), []byte(`"ping"}`)},
+	})
+	assert.Equal(t, Message{Offset: 7, Data: []byte(`{"event":"ping"}`)}, <-received)
+	assert.Empty(t, received)
+}
+
+// TestRabbitMQStreamPositionBeforeConsume tests that the position of a stream that has not
+// started consuming is the requested start offset.
+func TestRabbitMQStreamPositionBeforeConsume(t *testing.T) {
+	s := &RabbitMQStream{logger: logrus.NewEntry(logrus.New()), options: stream.NewConsumerOptions()}
+	s.WithOffset(OffsetFirst)
+	assert.Equal(t, int64(0), s.Position())
+	s.WithOffset(12)
+	assert.Equal(t, int64(12), s.Position())
 }

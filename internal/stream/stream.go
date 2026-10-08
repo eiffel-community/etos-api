@@ -17,9 +17,24 @@ package stream
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sirupsen/logrus"
 )
+
+// OffsetFirst is the offset to use in order to consume a stream from its first retained message.
+const OffsetFirst int64 = -1
+
+// ErrEmptyStream is returned by Stream.FirstOffset when the stream holds no messages.
+var ErrEmptyStream = errors.New("stream is empty")
+
+// Message is a single message consumed from a stream together with its offset. The offset is
+// assigned by the stream, is immutable and strictly increasing, but not necessarily contiguous
+// for a consumer since messages may be filtered out.
+type Message struct {
+	Offset int64
+	Data   []byte
+}
 
 type Streamer interface {
 	NewStream(context.Context, *logrus.Entry, string) (Stream, error)
@@ -28,9 +43,16 @@ type Streamer interface {
 }
 
 type Stream interface {
-	WithChannel(chan<- []byte) Stream
-	WithOffset(int) Stream
+	WithChannel(chan<- Message) Stream
+	// WithOffset sets the offset of the first message to consume, or OffsetFirst.
+	WithOffset(int64) Stream
 	WithFilter([]string) Stream
 	Consume(context.Context) (<-chan error, error)
+	// FirstOffset returns the offset of the first message retained in the stream, or
+	// ErrEmptyStream if there are no messages.
+	FirstOffset() (int64, error)
+	// Position returns an offset such that every message below it has either been sent on the
+	// channel, and received from it, or been filtered out. It never moves backwards.
+	Position() int64
 	Close()
 }
