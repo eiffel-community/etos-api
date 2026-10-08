@@ -16,7 +16,10 @@
 package stream
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
@@ -77,6 +80,7 @@ func TestRabbitMQStreamHandleMessageScopesToIdentifier(t *testing.T) {
 				identifier: "run-a",
 				options:    stream.NewConsumerOptions(),
 			}
+
 			s.WithChannel(received)
 			s.WithFilter(tt.filter)
 			message := &amqp.Message{
@@ -89,7 +93,7 @@ func TestRabbitMQStreamHandleMessageScopesToIdentifier(t *testing.T) {
 			}
 			// The RabbitMQ client runs the configured post-filter before invoking the callback.
 			if s.options.Filter == nil || s.options.Filter.PostFilter(message) {
-				s.handleMessage(message)
+				s.handleMessage(context.Background(), message)
 			}
 
 			if tt.want {
@@ -99,4 +103,69 @@ func TestRabbitMQStreamHandleMessageScopesToIdentifier(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRabbitMQStreamHandleMessageCancelUnblocksSend checks that a blocked broker
+// callback exits when its subscription is canceled.
+func TestRabbitMQStreamHandleMessageCancelUnblocksSend(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &RabbitMQStream{
+		identifier: "run-a",
+		channel:    make(chan []byte),
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleMessage(ctx, &amqp.Message{
+			ApplicationProperties: map[string]any{"identifier": "run-a"},
+			Data:                  [][]byte{[]byte("payload")},
+		})
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("broker callback blocked after cancellation")
+	}
+}
+
+// TestNotifyCloseCancelUnblocksSend checks that a close notification does not
+// strand its goroutine if the subscriber no longer reads from its channel.
+func TestNotifyCloseCancelUnblocksSend(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	notifications := make(chan stream.Event)
+	result := make(chan error)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		notifyClose(ctx, notifications, result)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("close notifier blocked after cancellation")
+	}
+}
+
+// TestNotifyCloseForwardsBrokerError checks the registered notification is
+// delivered without requiring a receiver to be ready at the same instant.
+func TestNotifyCloseForwardsBrokerError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	notifications := make(chan stream.Event, 1)
+	result := make(chan error, 1)
+	brokerErr := errors.New("broker closed")
+	notifications <- stream.Event{Err: brokerErr}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		notifyClose(ctx, notifications, result)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("close notifier blocked without a waiting subscriber")
+	}
+	assert.ErrorIs(t, <-result, brokerErr)
 }

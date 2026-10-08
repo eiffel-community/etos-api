@@ -100,6 +100,9 @@ type ErrorEvent struct {
 // subscribe subscribes to stream and gets logs and events from it and writes them to a channel.
 func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer stream.Stream, ch chan<- events.Event, lastID int, filter []string) {
 	defer close(ch)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer streamer.Close()
 	var err error
 
 	consumeCh := make(chan []byte, 0)
@@ -111,10 +114,12 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 	if err != nil {
 		logger.WithError(err).Error("failed to start consuming stream")
 		b, _ := json.Marshal(ErrorEvent{Retry: false, Reason: err.Error()})
-		ch <- events.Event{Event: "error", Data: string(b)}
+		select {
+		case ch <- events.Event{Event: "error", Data: string(b)}:
+		case <-ctx.Done():
+		}
 		return
 	}
-	defer streamer.Close()
 
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
@@ -125,11 +130,21 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 			logger.Info("Client lost, closing subscriber")
 			return
 		case <-ping.C:
-			ch <- events.Event{Event: "ping"}
-		case <-closed:
+			select {
+			case ch <- events.Event{Event: "ping"}:
+			case <-ctx.Done():
+				return
+			}
+		case _, ok := <-closed:
+			if !ok || ctx.Err() != nil {
+				return
+			}
 			logger.Info("Stream closed, closing down")
 			b, _ := json.Marshal(ErrorEvent{Retry: true, Reason: "Streamer closed the connection"})
-			ch <- events.Event{Event: "error", Data: string(b)}
+			select {
+			case ch <- events.Event{Event: "error", Data: string(b)}:
+			case <-ctx.Done():
+			}
 			return
 		case msg := <-consumeCh:
 			// We have no reliable way of getting a specific offset on the SSE stream so
@@ -149,7 +164,11 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 				continue
 			}
 			event.ID = counter
-			ch <- event
+			select {
+			case ch <- event:
+			case <-ctx.Done():
+				return
+			}
 			counter++
 		}
 	}
@@ -202,32 +221,38 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		streamer.Close()
 		http.NotFound(w, r)
 		return
 	}
 	logger.Info("Client connected to SSE")
 
+	ctx, cancel := context.WithCancel(r.Context())
+	stop := context.AfterFunc(h.ctx, cancel)
+	defer stop()
+	defer cancel()
 	receiver := make(chan events.Event) // Channel is closed in Subscriber
-	go h.subscribe(r.Context(), logger, streamer, receiver, lastID, filter)
+	go h.subscribe(ctx, logger, streamer, receiver, lastID, filter)
 
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
+			if h.ctx.Err() != nil {
+				// Abort the response instead of ending it, so that clients see a broken
+				// connection and reconnect with Last-Event-ID, as they do when a server
+				// stops. Released clients do not reconnect after a cleanly ended stream.
+				logger.Info("Shutting down, aborting stream")
+				panic(http.ErrAbortHandler)
+			}
 			logger.Info("Client gone from SSE")
 			return
-		case <-h.ctx.Done():
-			// Abort the response instead of ending it, so that clients see a broken
-			// connection and reconnect with Last-Event-ID, as they do when a server
-			// stops. Released clients do not reconnect after a cleanly ended stream.
-			logger.Info("Shutting down, aborting stream")
-			panic(http.ErrAbortHandler)
 		case event, ok := <-receiver:
 			if !ok {
 				return
 			}
 			if err := event.Write(w); err != nil {
-				logger.Error(err)
-				continue
+				logger.WithError(err).Error("failed to write SSE event")
+				return
 			}
 			flusher.Flush()
 		}
