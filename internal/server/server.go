@@ -28,6 +28,7 @@ import (
 type Server interface {
 	Start() error
 	Close(ctx context.Context) error
+	OnShutdown(f func())
 }
 
 // WebService is a struct for webservices implementing the Server interface.
@@ -57,6 +58,14 @@ func NewWebService(cfg config.Config, log *logrus.Entry, handler http.Handler) S
 func (s *WebService) Start() error {
 	s.logger.Infof("Starting webservice listening on %s:%s%s", s.cfg.ServiceHost(), s.cfg.ServicePort(), s.cfg.StripPrefix())
 	return s.server.ListenAndServe()
+}
+
+// OnShutdown registers a function to call, in its own goroutine, when Close starts shutting
+// down the webservice. The listeners are closed before the function is called, so no new
+// connections are accepted, but Close keeps waiting for active requests until they return.
+// Use it to signal long-lived requests, such as event streams, to finish.
+func (s *WebService) OnShutdown(f func()) {
+	s.server.RegisterOnShutdown(f)
 }
 
 // Close calls shutdown on the webservice. Shutdown times out if context is cancelled.

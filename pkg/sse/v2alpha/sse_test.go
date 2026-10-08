@@ -16,6 +16,7 @@
 package sse
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type cfg struct {
@@ -143,4 +145,68 @@ func TestSSEGetEventsStreamUnavailable(t *testing.T) {
 	body := responseRecorder.Body.String()
 	assert.Equal(t, "event stream is temporarily unavailable\n", body)
 	assert.NotContains(t, body, "rabbitmq.internal")
+}
+
+// TestSSEGetEventsShuttingDown tests that a stream is not started when the application is
+// shutting down, and that the client is told to retry.
+func TestSSEGetEventsShuttingDown(t *testing.T) {
+	appCtx, stop := context.WithCancel(context.Background())
+	stop()
+
+	log := logrus.WithFields(logrus.Fields{})
+	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
+	assert.NoError(t, err)
+	handler := Handler{log, &cfg{}, appCtx, streamer}
+	responseRecorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", "/v2alpha/events/test_sse_shutting_down", nil)
+	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: "test_sse_shutting_down"}}
+	handler.GetEvents(responseRecorder, request, ps)
+
+	assert.Equal(t, http.StatusServiceUnavailable, responseRecorder.Code)
+}
+
+// TestSSEGetEventsShutdownAbortsStream tests that an active stream is aborted, rather than
+// ended cleanly, when the application shuts down, so that clients reconnect.
+func TestSSEGetEventsShutdownAbortsStream(t *testing.T) {
+	data := []byte(`{"event":"message","data":{"message":"hello world","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
+	testrunID := "test_sse_shutdown_aborts_stream"
+	os.WriteFile(testrunID, data, 0644)
+	defer func() {
+		os.Remove(testrunID)
+	}()
+	appCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+
+	log := logrus.WithFields(logrus.Fields{})
+	streamer, err := stream.NewFileStreamer(10*time.Millisecond, log)
+	assert.NoError(t, err)
+	handler := Handler{log, &cfg{}, appCtx, streamer}
+	router := httprouter.New()
+	router.GET("/v2alpha/events/:identifier", handler.GetEvents)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	response, err := http.Get(fmt.Sprintf("%s/v2alpha/events/%s", server.URL, testrunID))
+	require.NoError(t, err)
+	defer response.Body.Close()
+	assert.Equal(t, http.StatusOK, response.StatusCode)
+
+	reader := bufio.NewReader(response.Body)
+	line, err := reader.ReadString('\n')
+	assert.NoError(t, err)
+	assert.Equal(t, "id: 1\n", line)
+
+	stop()
+	result := make(chan error, 1)
+	go func() {
+		_, err := io.ReadAll(reader)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		// A cleanly ended stream would return a nil error here.
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream was not closed after the application shut down")
+	}
 }
