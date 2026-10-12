@@ -29,6 +29,7 @@ import (
 
 	"github.com/eiffel-community/etos-api/internal/config"
 	"github.com/eiffel-community/etos-api/internal/logging"
+	"github.com/eiffel-community/etos-api/internal/metrics"
 	"github.com/eiffel-community/etos-api/internal/server"
 	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/application"
@@ -41,6 +42,9 @@ import (
 	"github.com/snowzach/rotatefilehook"
 	"go.elastic.co/ecslogrus"
 )
+
+// buildRevision is injected by the linker when VCS stamping is disabled.
+var buildRevision string
 
 // main sets up logging and starts up the sse webserver.
 func main() {
@@ -68,6 +72,7 @@ func main() {
 	})
 
 	log.Info("Loading SSE routes")
+	telemetry := metrics.NewSSEMetrics()
 	v1AlphaSSE := v1alpha.New(cfg, log, ctx)
 	defer v1AlphaSSE.Close()
 	v1SSE := v1.New(cfg, log, ctx)
@@ -108,9 +113,9 @@ func main() {
 	// v2alpha event streams end instead of keeping the graceful shutdown waiting.
 	v2alphaCtx, stopV2alphaStreams := context.WithCancel(ctx)
 	defer stopV2alphaStreams()
-	v2AlphaSSE := v2alpha.New(v2alphaCtx, cfg, log, streamer)
+	v2AlphaSSE := v2alpha.New(v2alphaCtx, cfg, log, streamer, telemetry)
 	defer v2AlphaSSE.Close()
-	app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
+	app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE, metrics.NewEndpoint(telemetry.Handler()))
 
 	srv := server.NewWebService(cfg, log, app)
 	srv.OnShutdown(func() {
@@ -159,8 +164,11 @@ func fileLogging(cfg config.Config) logrus.Hook {
 	return nil
 }
 
-// vcsRevision returns vcs revision from build info, if any. Otherwise '(unknown)'.
+// vcsRevision returns the explicit build revision or Go's VCS metadata.
 func vcsRevision() string {
+	if buildRevision != "" {
+		return buildRevision
+	}
 	buildInfo, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "(unknown)"

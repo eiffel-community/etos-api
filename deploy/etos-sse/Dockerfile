@@ -14,9 +14,10 @@ COPY Makefile Makefile
 COPY cmd/sse cmd/sse
 COPY internal/ internal/
 COPY pkg/ pkg/
-COPY .git/ .git/
 
-RUN make sse
+ARG BUILD_REVISION
+RUN test -n "$BUILD_REVISION" || (echo "BUILD_REVISION must be supplied" >&2; exit 1)
+RUN make GOBUILD="go build -buildvcs=false" BUILD_LDFLAGS="-X main.buildRevision=$BUILD_REVISION" sse
 
 FROM alpine:3.17.3
 ARG TZ
