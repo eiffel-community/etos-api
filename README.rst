@@ -28,6 +28,24 @@ Running dockers in development mode
    make DEPLOY=etos-sse start
 
 
+Building the SSE image
+=====================
+
+``make sse-docker`` passes the current Git commit to the Docker build so that
+the SSE server logs it even with Go VCS stamping disabled. Git metadata is
+not copied into the SSE build container.
+
+The ``version`` log field is the short commit SHA and identifies the exact
+source.
+
+For a direct Docker build, supply revision explicitly::
+
+   docker build --build-arg BUILD_REVISION="$(git rev-parse --short HEAD)" \
+     -f deploy/etos-sse/Dockerfile -t etos-sse:local .
+
+The SSE image build fails if ``BUILD_REVISION``is missing or empty.
+
+
 Contribute
 ==========
 

@@ -1,6 +1,7 @@
 # Install tools locally instead of in $HOME/go/bin.
 export GOBIN := $(CURDIR)/bin
 export GOBUILD := go build
+BUILD_LDFLAGS ?=
 export PATH := $(GOBIN):$(PATH)
 
 export RELEASE_VERSION ?= $(shell git describe --always)
@@ -21,7 +22,7 @@ GOLANGCI_LINT_VERSION = v1.52.2
 define build-binary
 .PHONY: $(strip $(1))
 $(strip $(1)):
-	$$(GOBUILD) -ldflags="-w -s -buildid=" -trimpath -o bin/$(strip $(1)) ./cmd/$(strip $(1))
+	$$(GOBUILD) -ldflags="-w -s -buildid= $$(BUILD_LDFLAGS)" -trimpath -o bin/$(strip $(1)) ./cmd/$(strip $(1))
 endef
 
 # Generates a rule named $(program_name)-docker to to build the named program
@@ -36,7 +37,7 @@ EXTRA_DOCKER_ARGS=
 export EXTRA_DOCKER_ARGS
 $(strip $(1))-docker: $(strip $(1))
 	docker build . \
-    $(EXTRA_DOCKER_ARGS) \
+    $$(EXTRA_DOCKER_ARGS) \
 		-f deploy/etos-$(strip $(1))/Dockerfile \
 		-t $(DOCKER_REGISTRY)/$(DOCKER_NAMESPACE)/etos-$(strip $(1)):$(RELEASE_VERSION)
 endef
@@ -99,6 +100,8 @@ $(foreach prog,$(PROGRAMS), \
     $(eval $(call build-docker-image,$(prog))) \
     $(eval $(call push-docker-image,$(prog))) \
 )
+
+sse-docker: EXTRA_DOCKER_ARGS += --build-arg BUILD_REVISION=$(shell git rev-parse --short HEAD)
 
 # Build dependencies
 

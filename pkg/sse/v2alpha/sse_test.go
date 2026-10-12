@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ import (
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
+	"github.com/eiffel-community/etos-api/internal/metrics"
 	"github.com/eiffel-community/etos-api/internal/stream"
 	"github.com/eiffel-community/etos-api/pkg/events"
 	"github.com/julienschmidt/httprouter"
@@ -43,6 +45,68 @@ type cfg struct {
 	config.Config
 }
 
+// TestNewMetrics verifies explicit telemetry is reused and nil creates default metrics.
+func TestNewMetrics(t *testing.T) {
+	for _, name := range []string{"provided", "nil"} {
+		t.Run(name, func(t *testing.T) {
+			var telemetry *metrics.SSEMetrics
+			if name == "provided" {
+				telemetry = metrics.NewSSEMetrics()
+			}
+			app := New(context.Background(), cfg{}, logrus.New().WithField("test", t.Name()), nil, telemetry)
+			t.Cleanup(app.cancel)
+			if telemetry != nil {
+				assert.Same(t, telemetry, app.metrics)
+			} else {
+				assert.NotNil(t, app.metrics)
+			}
+		})
+	}
+}
+
+// failingStream fails consumption before delivering any event.
+type failingStream struct{}
+
+// WithChannel keeps the failure fixture unchanged.
+func (s failingStream) WithChannel(chan<- stream.Message) stream.Stream { return s }
+
+// WithOffset keeps the failure fixture unchanged.
+func (s failingStream) WithOffset(int64) stream.Stream { return s }
+
+// FirstOffset reports an empty stream start.
+func (s failingStream) FirstOffset() (int64, error) { return 0, nil }
+
+// Position reports the start of the stream.
+func (s failingStream) Position() int64 { return 0 }
+
+// WithFilter keeps the failure fixture unchanged.
+func (s failingStream) WithFilter([]string) stream.Stream { return s }
+
+// Consume simulates a failed broker subscription.
+func (s failingStream) Consume(context.Context) (<-chan error, error) {
+	return nil, errors.New("subscription failed")
+}
+
+// Close satisfies the fixture's stream interface.
+func (s failingStream) Close() {}
+
+// TestSubscribeErrorExitsWhenDeliveryIsCanceled verifies failed subscriptions exit on cancellation.
+func TestSubscribeErrorExitsWhenDeliveryIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	logger := logrus.New().WithField("test", t.Name())
+	handler := &Handler{metrics: metrics.NewSSEMetrics()}
+	ch := make(chan events.Event)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		handler.subscribe(ctx, logger, failingStream{}, ch, 1, nil)
+	})
+	cancel()
+	wg.Wait()
+	_, ok := <-ch
+	assert.False(t, ok)
+}
+
 func (c cfg) RabbitMQURI() string {
 	return ""
 }
@@ -53,21 +117,20 @@ func (c cfg) RabbitMQStreamName() string {
 
 // TestSSEGetEvents tests that a client can subscribe to an SSE stream and get events.
 func TestSSEGetEvents(t *testing.T) {
+	t.Setenv("ETOS_CLUSTER", "")
 	data := []byte(`{"event":"message","data":{"message":"hello world","name":"etos","@timestamp":"2026-08-31T10:00:00Z"}}`)
-	testrunID := "test_sse_get_events"
-	os.WriteFile(testrunID, data, 0644)
-	defer func() {
-		os.Remove(testrunID)
-	}()
+	testrunID := filepath.Join(t.TempDir(), "test_sse_get_events")
+	assert.NoError(t, os.WriteFile(testrunID, data, 0644))
 	ctx, done := context.WithTimeout(context.Background(), time.Second*1)
 	defer done()
 
 	log := logrus.WithFields(logrus.Fields{})
 	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
 	assert.NoError(t, err)
-	handler := Handler{log, &cfg{}, context.Background(), streamer}
+	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: streamer, metrics: metrics.NewSSEMetrics()}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", fmt.Sprintf("/v2alpha/events/%s", testrunID), nil)
+	request.Header.Set("Last-Event-ID", "0")
 	request = request.WithContext(ctx)
 	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: testrunID}}
 	handler.GetEvents(responseRecorder, request, ps)
@@ -81,6 +144,11 @@ event: message
 data: {"@timestamp":"2026-08-31T10:00:00Z","message":"hello world","name":"etos"}
 
 `))
+	metricResponse := httptest.NewRecorder()
+	handler.metrics.Render(metricResponse)
+	assert.Contains(t, metricResponse.Body.String(), `etos_sse_connections_active{etos_cluster="unassigned"} 0`)
+	assert.Contains(t, metricResponse.Body.String(), `etos_sse_disconnects_total{etos_cluster="unassigned",reason="client_disconnect"} 1`)
+	assert.Contains(t, metricResponse.Body.String(), `etos_sse_reconnects_total{etos_cluster="unassigned"} 1`)
 }
 
 // TestSSEGetEventsDropsInvalid tests that events which do not match the protocol
@@ -89,18 +157,15 @@ func TestSSEGetEventsDropsInvalid(t *testing.T) {
 	// A "message" event whose data is a plain string does not match the Log
 	// protocol and must be dropped.
 	data := []byte(`{"event":"message","data":"hello world"}`)
-	testrunID := "test_sse_drops_invalid"
-	os.WriteFile(testrunID, data, 0644)
-	defer func() {
-		os.Remove(testrunID)
-	}()
+	testrunID := filepath.Join(t.TempDir(), "test_sse_drops_invalid")
+	assert.NoError(t, os.WriteFile(testrunID, data, 0644))
 	ctx, done := context.WithTimeout(context.Background(), time.Second*1)
 	defer done()
 
 	log := logrus.WithFields(logrus.Fields{})
 	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
 	assert.NoError(t, err)
-	handler := Handler{log, &cfg{}, context.Background(), streamer}
+	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: streamer, metrics: metrics.NewSSEMetrics()}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", fmt.Sprintf("/v2alpha/events/%s", testrunID), nil)
 	request = request.WithContext(ctx)
@@ -136,9 +201,10 @@ func (s unavailableStreamer) Close() {}
 // TestSSEGetEventsStreamUnavailable tests that a failure to open a stream is reported as
 // a retryable 503 Service Unavailable, without leaking the backend error to the client.
 func TestSSEGetEventsStreamUnavailable(t *testing.T) {
+	t.Setenv("ETOS_CLUSTER", "")
 	backendErr := errors.New("dial tcp rabbitmq.internal:5552: connection refused")
 	log := logrus.WithFields(logrus.Fields{})
-	handler := Handler{log, &cfg{}, context.Background(), unavailableStreamer{err: backendErr}}
+	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: unavailableStreamer{err: backendErr}, metrics: metrics.NewSSEMetrics()}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/v2alpha/events/test_sse_stream_unavailable", nil)
 	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: "test_sse_stream_unavailable"}}
@@ -149,6 +215,10 @@ func TestSSEGetEventsStreamUnavailable(t *testing.T) {
 	body := responseRecorder.Body.String()
 	assert.Equal(t, "event stream is temporarily unavailable\n", body)
 	assert.NotContains(t, body, "rabbitmq.internal")
+	metricResponse := httptest.NewRecorder()
+	handler.metrics.Render(metricResponse)
+	assert.Contains(t, metricResponse.Body.String(), `etos_sse_errors_total{category="backend_failure",etos_cluster="unassigned"} 1`)
+	assert.NotContains(t, metricResponse.Body.String(), "rabbitmq.internal")
 }
 
 // TestSSEGetEventsShuttingDown tests that a stream is not started when the application is
@@ -160,7 +230,7 @@ func TestSSEGetEventsShuttingDown(t *testing.T) {
 	log := logrus.WithFields(logrus.Fields{})
 	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
 	assert.NoError(t, err)
-	handler := Handler{log, &cfg{}, appCtx, streamer}
+	handler := Handler{log, &cfg{}, appCtx, streamer, metrics.NewSSEMetrics()}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/v2alpha/events/test_sse_shutting_down", nil)
 	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: "test_sse_shutting_down"}}
@@ -184,7 +254,7 @@ func TestSSEGetEventsShutdownAbortsStream(t *testing.T) {
 	log := logrus.WithFields(logrus.Fields{})
 	streamer, err := stream.NewFileStreamer(10*time.Millisecond, log)
 	assert.NoError(t, err)
-	handler := Handler{log, &cfg{}, appCtx, streamer}
+	handler := Handler{log, &cfg{}, appCtx, streamer, metrics.NewSSEMetrics()}
 	router := httprouter.New()
 	router.GET("/v2alpha/events/:identifier", handler.GetEvents)
 	server := httptest.NewServer(router)
@@ -303,7 +373,7 @@ func TestSubscribeCancelUnblocksEventSend(t *testing.T) {
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		(Handler{}).subscribe(ctx, logrus.NewEntry(logrus.New()), s, receiver, 1, nil)
+		(&Handler{metrics: metrics.NewSSEMetrics()}).subscribe(ctx, logrus.NewEntry(logrus.New()), s, receiver, 1, nil)
 	}()
 	select {
 	case <-s.channelReady:
@@ -339,7 +409,7 @@ func TestGetEventsWriteFailureClosesStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	s := &controlledStream{closed: make(chan struct{}), channelReady: make(chan struct{})}
-	h := Handler{logger: logrus.NewEntry(logrus.New()), ctx: context.Background(), streamer: &controlledStreamer{stream: s}}
+	h := Handler{logger: logrus.NewEntry(logrus.New()), ctx: context.Background(), streamer: &controlledStreamer{stream: s}, metrics: metrics.NewSSEMetrics()}
 	w := &failingWriter{written: make(chan struct{})}
 	request := httptest.NewRequest(http.MethodGet, "/sse/v2alpha/events/run", nil).WithContext(ctx)
 	finished := make(chan struct{})
@@ -395,7 +465,7 @@ func TestGetEventsShutdownWithSlowWriters(t *testing.T) {
 		w := &blockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
 		writers[i] = w
 		finished[i] = make(chan struct{})
-		h := Handler{logger: logrus.NewEntry(logrus.New()), ctx: appCtx, streamer: &controlledStreamer{stream: s}}
+		h := Handler{logger: logrus.NewEntry(logrus.New()), ctx: appCtx, streamer: &controlledStreamer{stream: s}, metrics: metrics.NewSSEMetrics()}
 		go func(done chan struct{}) {
 			defer close(done)
 			// Shutdown aborts the response with http.ErrAbortHandler.
@@ -449,7 +519,7 @@ func getEvents(t *testing.T, testrunID string, lines string, lastEventID string)
 	log := logrus.WithFields(logrus.Fields{})
 	streamer, err := stream.NewFileStreamer(10*time.Millisecond, log)
 	assert.NoError(t, err)
-	handler := Handler{log, &cfg{}, context.Background(), streamer}
+	handler := Handler{log, &cfg{}, context.Background(), streamer, metrics.NewSSEMetrics()}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", fmt.Sprintf("/v2alpha/events/%s", testrunID), nil)
 	if lastEventID != "" {
@@ -544,7 +614,7 @@ func getFakeEvents(t *testing.T, fake *fakeStream, lastEventID string, timeout t
 	ctx, done := context.WithTimeout(context.Background(), timeout)
 	defer done()
 	log := logrus.WithFields(logrus.Fields{})
-	handler := Handler{log, &cfg{}, context.Background(), fakeStreamer{fake}}
+	handler := Handler{log, &cfg{}, context.Background(), fakeStreamer{fake}, metrics.NewSSEMetrics()}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/v2alpha/events/fake", nil)
 	if lastEventID != "" {

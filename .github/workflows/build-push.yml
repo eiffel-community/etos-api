@@ -54,7 +54,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Build app image
-      run: docker build . -f deploy/etos-sse/Dockerfile --tag image
+      run: docker build . -f deploy/etos-sse/Dockerfile --build-arg BUILD_REVISION="$(git rev-parse --short HEAD)" --tag image
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v4
       with:

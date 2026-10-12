@@ -13,6 +13,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// Package sse serves the v2alpha event stream protocol.
 package sse
 
 import (
@@ -26,8 +28,8 @@ import (
 	"time"
 
 	"github.com/eiffel-community/etos-api/internal/config"
+	"github.com/eiffel-community/etos-api/internal/metrics"
 	"github.com/eiffel-community/etos-api/internal/stream"
-	"github.com/eiffel-community/etos-api/pkg/application"
 	"github.com/eiffel-community/etos-api/pkg/events"
 	schema "github.com/eiffel-community/etos/schemas/messaging/v2alpha"
 	"github.com/julienschmidt/httprouter"
@@ -38,19 +40,23 @@ import (
 // pingInterval is a variable so that tests can shorten it.
 var pingInterval = 15 * time.Second
 
+// Application serves the v2alpha stream routes and owns their shutdown context.
 type Application struct {
 	logger   *logrus.Entry
 	cfg      config.SSEConfig
 	ctx      context.Context
 	cancel   context.CancelFunc
 	streamer stream.Streamer
+	metrics  *metrics.SSEMetrics
 }
 
+// Handler streams v2alpha events and records bounded service telemetry.
 type Handler struct {
 	logger   *logrus.Entry
 	cfg      config.SSEConfig
 	ctx      context.Context
 	streamer stream.Streamer
+	metrics  *metrics.SSEMetrics
 }
 
 // Close cancels the application context.
@@ -60,22 +66,26 @@ func (a *Application) Close() {
 }
 
 // New returns a new Application object/struct.
-func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer stream.Streamer) application.Application {
+func New(ctx context.Context, cfg config.SSEConfig, log *logrus.Entry, streamer stream.Streamer, telemetry *metrics.SSEMetrics) *Application {
 	ctx, cancel := context.WithCancel(ctx)
+	if telemetry == nil {
+		telemetry = metrics.NewSSEMetrics()
+	}
 	return &Application{
 		logger:   log,
 		cfg:      cfg,
 		ctx:      ctx,
 		cancel:   cancel,
 		streamer: streamer,
+		metrics:  telemetry,
 	}
 }
 
 // LoadRoutes loads all the v2alpha routes.
-func (a Application) LoadRoutes(router *httprouter.Router) {
-	handler := &Handler{a.logger, a.cfg, a.ctx, a.streamer}
-	router.GET("/sse/v2alpha/selftest/ping", handler.Selftest)
-	router.GET("/sse/v2alpha/events/:identifier", handler.GetEvents)
+func (a *Application) LoadRoutes(router *httprouter.Router) {
+	handler := &Handler{a.logger, a.cfg, a.ctx, a.streamer, a.metrics}
+	router.GET("/sse/v2alpha/selftest/ping", a.metrics.Wrap("/sse/v2alpha/selftest/ping", http.MethodGet, handler.Selftest))
+	router.GET("/sse/v2alpha/events/:identifier", a.metrics.Wrap("/sse/v2alpha/events/:identifier", http.MethodGet, handler.GetEvents))
 }
 
 // Selftest is a handler to just return 204.
@@ -94,6 +104,7 @@ func (h Handler) cleanFilter(identifier string, filters []string) {
 	}
 }
 
+// ErrorEvent reports whether a stream error allows a client retry.
 type ErrorEvent struct {
 	Retry  bool   `json:"retry"`
 	Reason string `json:"reason"`
@@ -163,6 +174,7 @@ func (h Handler) subscribe(ctx context.Context, logger *logrus.Entry, streamer s
 	closed, err := streamer.WithChannel(consumeCh).WithOffset(offset).WithFilter(filter).Consume(ctx)
 	if err != nil {
 		logger.WithError(err).Error("failed to start consuming stream")
+		h.metrics.StreamError("backend_failure")
 		sendError(ctx, ch, true, "failed to consume the event stream")
 		return
 	}
@@ -246,6 +258,7 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 	var lastID int64
 	lastEventID := r.Header.Get("Last-Event-ID")
 	if lastEventID != "" {
+		h.metrics.ReconnectRequested()
 		var err error
 		lastID, err = strconv.ParseInt(lastEventID, 10, 64)
 		if err != nil || lastID < 0 {
@@ -268,6 +281,7 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 		// Failing to open a stream is a server-side (broker) failure and not caused by the
 		// client request, so report it as retryable and keep the details out of the response.
 		logger.WithError(err).Error("Could not start a new stream")
+		h.metrics.StreamError("backend_failure")
 		http.Error(w, "event stream is temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -275,10 +289,14 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		streamer.Close()
+		h.metrics.StreamError("protocol_unsupported")
 		http.NotFound(w, r)
 		return
 	}
 	logger.Info("Client connected to SSE")
+	h.metrics.ConnectionOpened()
+	closeReason := "subscriber_shutdown"
+	defer func() { h.metrics.ConnectionClosedWithReason(closeReason) }()
 
 	ctx, cancel := context.WithCancel(r.Context())
 	stop := context.AfterFunc(h.ctx, cancel)
@@ -295,9 +313,11 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 				// connection and reconnect with Last-Event-ID, as they do when a server
 				// stops. Released clients do not reconnect after a cleanly ended stream.
 				logger.Info("Shutting down, aborting stream")
+				closeReason = "server_shutdown"
 				panic(http.ErrAbortHandler)
 			}
 			logger.Info("Client gone from SSE")
+			closeReason = "client_disconnect"
 			return
 		case event, ok := <-receiver:
 			if !ok {
@@ -305,8 +325,11 @@ func (h Handler) GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter
 			}
 			if err := event.Write(w); err != nil {
 				logger.WithError(err).Error("failed to write SSE event")
+				h.metrics.StreamError("stream_write_error")
+				closeReason = "stream_write_error"
 				return
 			}
+			h.metrics.EventDelivered(event.Event)
 			flusher.Flush()
 		}
 	}
