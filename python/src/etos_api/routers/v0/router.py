@@ -32,7 +32,7 @@ from opentelemetry.trace import Span
 from starlette.responses import RedirectResponse, Response
 
 from etos_api.library.environment import Configuration, configure_testrun
-from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, TIME_REQUESTS
+from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS
 from etos_api.library.opentelemetry import context
 from etos_api.library.utilities import sync_to_async
 
@@ -61,8 +61,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 
 
 @ETOSV0.post("/etos", tags=["etos"], response_model=StartEtosResponse)
-@TIME_REQUESTS(START_LABELS)
-@COUNT_REQUESTS(START_LABELS, LOGGER)
+@COUNT_REQUESTS(START_LABELS, LOGGER, ETOSV0.version)
 async def start_etos(
     etos: StartEtosRequest,
     ctx: Annotated[otel_context.Context, Depends(context)],
@@ -81,8 +80,7 @@ async def start_etos(
 
 
 @ETOSV0.delete("/etos/{suite_id}", tags=["etos"], response_model=AbortEtosResponse)
-@TIME_REQUESTS(STOP_LABELS)
-@COUNT_REQUESTS(STOP_LABELS, LOGGER)
+@COUNT_REQUESTS(STOP_LABELS, LOGGER, ETOSV0.version)
 async def abort_etos(suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]) -> dict:
     """Abort ETOS execution on delete.
 

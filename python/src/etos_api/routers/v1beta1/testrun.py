@@ -36,6 +36,7 @@ from pydantic import BaseModel
 from yaml import safe_load
 
 from etos_api.library.docker import Docker
+from etos_api.library.cluster import cluster_identity
 
 from .schemas import StartTestrunRequest
 from .utilities import convert_to_rfc1123, wait_for_artifact_created
@@ -190,9 +191,7 @@ class TestRun:
 
         ctx = otel_baggage.set_baggage("testrun_id", self.testrun_id, context=ctx)
         ctx = otel_baggage.set_baggage("artifact_id", artifact.artifact_id, context=ctx)
-        ctx = otel_baggage.set_baggage(
-            "etos_cluster", os.getenv("ETOS_CLUSTER", "Unknown"), context=ctx
-        )
+        ctx = otel_baggage.set_baggage("etos_cluster", cluster_identity(), context=ctx)
         carrier: dict = {}
         # inject() creates a dict with context reference,
         # e. g. {'traceparent': '00-0be6c260d9cbe9772298eaf19cb90a5b-371353ee8fbd3ced-01'}
@@ -238,7 +237,8 @@ class TestRun:
             ),
         )
         testrun_client = TestRunClient(kubernetes)
-        if not testrun_client.create(testrun):
+        created = testrun_client.create(testrun)
+        if not created:
             raise HTTPException(status_code=500, detail="Failed to create testrun")
         self.logger.info("ETOS triggered successfully")
 

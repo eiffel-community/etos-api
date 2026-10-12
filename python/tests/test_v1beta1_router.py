@@ -101,6 +101,35 @@ class TestV1Beta1Router(TestCase):
         suites = self._start(_test_suite([None]), {"key": "value"})
         self.assertDictEqual(suites[0].dataset, {"key": "value"})
 
+    def test_start_testrun_creation_failure_returns_server_error(self):
+        """Verify unsuccessful Kubernetes creation returns 500 instead of API success."""
+        artifact = Artifact(artifact_id="11111111-1111-1111-1111-111111111111", identity="pkg:x/y")
+        with (
+            patch(
+                "etos_api.routers.v1beta1.testrun.TestRun.download_suite",
+                AsyncMock(return_value=_test_suite([None])),
+            ),
+            patch("etos_api.routers.v1beta1.testrun.TestRun.validate_test_runners", AsyncMock()),
+            patch(
+                "etos_api.routers.v1beta1.testrun.TestRun.wait_for_artifact",
+                AsyncMock(return_value=artifact),
+            ),
+            patch("etos_api.routers.v1beta1.testrun.Kubernetes") as kubernetes,
+            patch("etos_api.routers.v1beta1.testrun.TestRunClient") as client,
+        ):
+            kubernetes.return_value.namespace = "etos-test"
+            client.return_value.create.return_value = False
+            response = self.client.post(
+                "/api/v1beta1/testrun",
+                json={
+                    "artifact_identity": "pkg:x/y",
+                    "test_suite_url": "http://localhost/my_test.json",
+                },
+            )
+        self.assertEqual(response.status_code, 500, response.text)
+        self.assertEqual(response.json()["detail"], "Failed to create testrun")
+        client.return_value.create.assert_called_once()
+
     def test_start_testrun_suite_with_dataset(self):
         """Test that a request dataset is merged into a suite dataset.
 
