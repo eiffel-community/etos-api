@@ -90,6 +90,8 @@ jobs:
         with:
           context: .
           file: ./deploy/etos-sse/Dockerfile
+          build-args: |
+            BUILD_REVISION=${{ github.sha }}
       - name: Build KeyService image
         uses: docker/build-push-action@v7
         with:
