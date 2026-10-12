@@ -39,7 +39,11 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from pydantic import BaseModel
 
+from etos_api.library.cluster import cluster_identity
+
 LOGGER = logging.getLogger(__name__)
+# Health probes and Prometheus scrapes are periodic infrastructure requests, not user operations.
+OTEL_EXCLUDED_URLS = ".*/ping,.*/metrics"
 
 
 def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
@@ -48,6 +52,7 @@ def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
         {
             SERVICE_NAME: "etos-api",
             SERVICE_VERSION: version,
+            "etos_cluster": cluster_identity(),
         },
     )
 
@@ -67,7 +72,9 @@ def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
         ]
     )
     set_global_textmap(propagator)
-    FastAPIInstrumentor().instrument_app(app, tracer_provider=provider, excluded_urls=".*/ping")
+    FastAPIInstrumentor().instrument_app(
+        app, tracer_provider=provider, excluded_urls=OTEL_EXCLUDED_URLS
+    )
     return otel_resource
 
 

@@ -25,6 +25,7 @@ from etos_api.routers.v1beta1 import ETOSV1BETA1
 DEFAULT_VERSION = ETOSV0
 
 APP = FastAPI()
+
 APP.mount("/api/v1alpha", ETOSV1ALPHA, "ETOS V1 Alpha")
 APP.mount("/api/v1beta1", ETOSV1BETA1, "ETOS V1 Beta")
 APP.mount("/api/v0", ETOSV0, "ETOS V0")

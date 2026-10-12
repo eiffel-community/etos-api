@@ -16,6 +16,7 @@
 """ETOS testrun router."""
 
 import logging
+from time import perf_counter
 from typing import Annotated
 
 from etos_lib.kubernetes import Environment, Kubernetes
@@ -26,7 +27,11 @@ from opentelemetry import trace
 from opentelemetry.trace import Span
 from starlette.responses import Response
 
-from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, TIME_REQUESTS
+from etos_api.library.metrics import (
+    COUNT_REQUESTS,
+    OPERATIONS,
+    record_suite_operation,
+)
 from etos_api.library.opentelemetry import context
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
@@ -58,8 +63,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 
 
 @ETOSV1BETA1.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
-@TIME_REQUESTS(START_LABELS)
-@COUNT_REQUESTS(START_LABELS, LOGGER)
+@COUNT_REQUESTS(START_LABELS, LOGGER, ETOSV1BETA1.version)
 async def start_testrun(
     etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
 ) -> dict:
@@ -77,8 +81,7 @@ async def start_testrun(
 
 
 @ETOSV1BETA1.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
-@TIME_REQUESTS(STOP_LABELS)
-@COUNT_REQUESTS(STOP_LABELS, LOGGER)
+@COUNT_REQUESTS(STOP_LABELS, LOGGER, ETOSV1BETA1.version)
 async def abort_testrun(
     suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]
 ) -> dict:
@@ -99,8 +102,7 @@ async def abort_testrun(
 # we don't want to set the actual value in the metrics label since that would create
 # a high cardinality metric. Therefore we use the literal string "{sub_suite_id}".
 @ETOSV1BETA1.get("/testrun/{sub_suite_id}", tags=["etos"])
-@TIME_REQUESTS(SUBSUITE_LABELS)
-@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER)
+@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER, ETOSV1BETA1.version)
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
 
@@ -134,20 +136,34 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
     """
     testrun = TestRun(span)
 
+    download_started = perf_counter()
     try:
         test_suite = await testrun.download_suite(etos.test_suite_url)
     except Exception as error:
+        record_suite_operation(
+            "v1beta1", "suite_download", "client_error", perf_counter() - download_started
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Failed to download test suite from {etos.test_suite_url}: {str(error)}",
         ) from error
+    record_suite_operation(
+        "v1beta1", "suite_download", "success", perf_counter() - download_started
+    )
+    validation_started = perf_counter()
     try:
         testrun_spec = await testrun.validate_suite(test_suite)
     except Exception as error:
+        record_suite_operation(
+            "v1beta1", "suite_validation", "client_error", perf_counter() - validation_started
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Failed to validate test suite: {str(error)}",
         ) from error
+    record_suite_operation(
+        "v1beta1", "suite_validation", "success", perf_counter() - validation_started
+    )
 
     datasets = etos.dataset
     if isinstance(datasets, list):

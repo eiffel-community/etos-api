@@ -17,6 +17,7 @@
 
 import logging
 import os
+from time import perf_counter
 from typing import Annotated
 from uuid import uuid4
 
@@ -34,7 +35,12 @@ from opentelemetry.propagate import inject
 from opentelemetry.trace import Span
 from starlette.responses import Response
 
-from etos_api.library.metrics import COUNT_REQUESTS, OPERATIONS, TIME_REQUESTS
+from etos_api.library.cluster import cluster_identity
+from etos_api.library.metrics import (
+    COUNT_REQUESTS,
+    OPERATIONS,
+    record_suite_operation,
+)
 from etos_api.library.opentelemetry import context
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
@@ -45,6 +51,9 @@ from .utilities import (
     validate_suite,
     wait_for_artifact_created,
 )
+
+# Since v1alpha is becoming deprecated and will be removed, I don't feel we should need to fix this.
+# pylint:disable=too-many-branches
 
 ETOSV1ALPHA = FastAPI(
     title="ETOS",
@@ -72,8 +81,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 
 
 @ETOSV1ALPHA.post("/testrun", tags=["etos"], response_model=StartTestrunResponse)
-@TIME_REQUESTS(START_LABELS)
-@COUNT_REQUESTS(START_LABELS, LOGGER)
+@COUNT_REQUESTS(START_LABELS, LOGGER, ETOSV1ALPHA.version)
 async def start_testrun(
     etos: StartTestrunRequest, ctx: Annotated[otel_context.Context, Depends(context)]
 ) -> dict:
@@ -91,8 +99,7 @@ async def start_testrun(
 
 
 @ETOSV1ALPHA.delete("/testrun/{suite_id}", tags=["etos"], response_model=AbortTestrunResponse)
-@TIME_REQUESTS(STOP_LABELS)
-@COUNT_REQUESTS(STOP_LABELS, LOGGER)
+@COUNT_REQUESTS(STOP_LABELS, LOGGER, ETOSV1ALPHA.version)
 async def abort_testrun(
     suite_id: str, ctx: Annotated[otel_context.Context, Depends(context)]
 ) -> dict:
@@ -113,8 +120,7 @@ async def abort_testrun(
 # we don't want to set the actual value in the metrics label since that would create
 # a high cardinality metric. Therefore we use the literal string "{suite_id}".
 @ETOSV1ALPHA.get("/testrun/{sub_suite_id}", tags=["etos"])
-@TIME_REQUESTS(SUBSUITE_LABELS)
-@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER)
+@COUNT_REQUESTS(SUBSUITE_LABELS, LOGGER, ETOSV1ALPHA.version)
 async def get_subsuite(sub_suite_id: str) -> dict:
     """Get sub suite returns the sub suite definition for the ETOS test runner.
 
@@ -155,11 +161,37 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
 
     LOGGER.info("Download test suite.")
     span.set_attribute("etos.test_suite.uri", etos.test_suite_url)
-    test_suite = await download_suite(etos.test_suite_url)
+    download_started = perf_counter()
+    try:
+        test_suite = await download_suite(etos.test_suite_url)
+    except Exception:
+        record_suite_operation(
+            "v1alpha", "suite_download", "server_error", perf_counter() - download_started
+        )
+        raise
+    record_suite_operation(
+        "v1alpha", "suite_download", "success", perf_counter() - download_started
+    )
     LOGGER.info("Test suite downloaded.")
 
     LOGGER.info("Validating test suite.")
-    await validate_suite(test_suite)
+    validation_started = perf_counter()
+    try:
+        await validate_suite(test_suite)
+    except HTTPException as error:
+        outcome = "client_error" if 400 <= error.status_code < 500 else "server_error"
+        record_suite_operation(
+            "v1alpha", "suite_validation", outcome, perf_counter() - validation_started
+        )
+        raise
+    except Exception:
+        record_suite_operation(
+            "v1alpha", "suite_validation", "server_error", perf_counter() - validation_started
+        )
+        raise
+    record_suite_operation(
+        "v1alpha", "suite_validation", "success", perf_counter() - validation_started
+    )
     LOGGER.info("Test suite validated.")
 
     etos_library = ETOS("ETOS API", os.getenv("HOSTNAME", "localhost"), "ETOS API")
@@ -231,9 +263,7 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
 
     ctx = otel_baggage.set_baggage("testrun_id", testrun_id, context=ctx)
     ctx = otel_baggage.set_baggage("artifact_id", artifact_id, context=ctx)
-    ctx = otel_baggage.set_baggage(
-        "etos_cluster", os.getenv("ETOS_CLUSTER", "Unknown"), context=ctx
-    )
+    ctx = otel_baggage.set_baggage("etos_cluster", cluster_identity(), context=ctx)
     carrier = {}
     # inject() creates a dict with context reference,
     # e. g. {'traceparent': '00-0be6c260d9cbe9772298eaf19cb90a5b-371353ee8fbd3ced-01'}
@@ -297,7 +327,8 @@ async def _create_testrun(etos: StartTestrunRequest, span: Span, ctx: otel_conte
     )
 
     testrun_client = TestRun(kubernetes)
-    if not testrun_client.create(testrun_spec):
+    created = testrun_client.create(testrun_spec)
+    if not created:
         raise HTTPException(status_code=500, detail="Failed to create testrun")
 
     LOGGER.info("ETOS triggered successfully.")
