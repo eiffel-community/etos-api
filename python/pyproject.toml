@@ -28,6 +28,7 @@ dependencies = [
     "opentelemetry-api~=1.21",
     "opentelemetry-exporter-otlp~=1.21",
     "opentelemetry-instrumentation-fastapi~=0.46b0",
+    "opentelemetry-instrumentation-system-metrics~=0.46b0",
     "opentelemetry-sdk~=1.21",
     "prometheus-client~=0.24",
     "jsontas>=1.4.1,<2.0.0",
