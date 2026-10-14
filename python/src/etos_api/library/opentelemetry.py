@@ -20,12 +20,16 @@ from typing import Annotated
 
 from fastapi import FastAPI, Header
 from opentelemetry import context as otel_context
-from opentelemetry import trace
+from opentelemetry import metrics, trace
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.propagate import extract, set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import (
     SERVICE_NAME,
     SERVICE_VERSION,
@@ -44,6 +48,16 @@ from etos_api.library.cluster import cluster_identity
 LOGGER = logging.getLogger(__name__)
 # Health probes and Prometheus scrapes are periodic infrastructure requests, not user operations.
 OTEL_EXCLUDED_URLS = ".*/ping,.*/metrics"
+# Only process-level runtime metrics are exported. Host-wide system.* metrics are excluded
+# to keep the number of custom metrics (and their cost) low.
+RUNTIME_METRICS = {
+    "process.runtime.memory": ["rss", "vms"],
+    "process.runtime.cpu.time": ["user", "system"],
+    "process.runtime.gc_count": None,
+    "process.runtime.thread_count": None,
+    "process.runtime.cpu.utilization": None,
+    "process.runtime.context_switches": ["involuntary", "voluntary"],
+}
 
 
 def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
@@ -65,6 +79,7 @@ def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
     processor = BatchSpanProcessor(exporter)
     provider.add_span_processor(processor)
     trace.set_tracer_provider(provider)
+    setup_runtime_metrics(otel_resource)
     propagator = CompositePropagator(
         [
             TraceContextTextMapPropagator(),
@@ -76,6 +91,15 @@ def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
         app, tracer_provider=provider, excluded_urls=OTEL_EXCLUDED_URLS
     )
     return otel_resource
+
+
+def setup_runtime_metrics(resource: Resource) -> MeterProvider:
+    """Export Python runtime metrics over OTLP."""
+    reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+    meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+    metrics.set_meter_provider(meter_provider)
+    SystemMetricsInstrumentor(config=RUNTIME_METRICS).instrument(meter_provider=meter_provider)
+    return meter_provider
 
 
 class OTELHeaders(BaseModel):
