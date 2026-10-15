@@ -15,6 +15,7 @@
 # limitations under the License.
 """ETOS API metrics."""
 
+from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
 from logging import Logger
@@ -22,7 +23,8 @@ from time import perf_counter
 from typing import Callable
 
 from fastapi import HTTPException
-from prometheus_client import Counter, Histogram
+from opentelemetry import metrics
+from opentelemetry.metrics import Counter, Histogram, Meter
 
 from etos_api.library.cluster import cluster_identity
 
@@ -35,39 +37,66 @@ OPERATIONS = Enum(
     ],
 )
 
-REQUEST_TIME = Histogram(
-    "http_request_duration_seconds",
-    "Time spent processing request",
-    ["endpoint", "operation", "etos_cluster"],
-)
-REQUESTS_TOTAL = Counter(
-    "http_requests_total",
-    "Total number of requests",
-    ["endpoint", "operation", "status", "etos_cluster"],
-)
+# Seconds. The OpenTelemetry default boundaries are meant for milliseconds.
+DURATION_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
 
-API_REQUESTS_TOTAL = Counter(
-    "etos_api_requests_total",
-    "Total decorated ETOS API operations by version, operation, status class, and outcome; "
-    "excludes HTTP requests that do not reach a decorated handler",
-    ["api_version", "operation", "status_class", "outcome", "etos_cluster"],
-)
-API_REQUEST_DURATION = Histogram(
-    "etos_api_request_duration_seconds",
-    "Duration in seconds of decorated ETOS API operations; excludes HTTP requests that do not "
-    "reach a decorated handler",
-    ["api_version", "operation", "outcome", "etos_cluster"],
-)
-SUITE_OPERATIONS_TOTAL = Counter(
-    "etos_api_suite_operations_total",
-    "Total suite download and validation operations",
-    ["api_version", "operation", "outcome", "etos_cluster"],
-)
-SUITE_OPERATION_DURATION = Histogram(
-    "etos_api_suite_operation_duration_seconds",
-    "Suite download and validation duration in seconds",
-    ["api_version", "operation", "outcome", "etos_cluster"],
-)
+
+@dataclass(frozen=True)
+class Instruments:
+    """OpenTelemetry instruments published by the ETOS API."""
+
+    request_duration: Histogram
+    requests: Counter
+    api_requests: Counter
+    api_request_duration: Histogram
+    suite_operations: Counter
+    suite_operation_duration: Histogram
+
+
+def create_instruments(meter: Meter) -> Instruments:
+    """Create the ETOS API instruments on a meter."""
+    return Instruments(
+        request_duration=meter.create_histogram(
+            "etos_api.http.request.duration",
+            unit="s",
+            description="Time spent processing request",
+            explicit_bucket_boundaries_advisory=DURATION_BUCKETS,
+        ),
+        requests=meter.create_counter(
+            "etos_api.http.requests",
+            unit="{request}",
+            description="Total number of requests",
+        ),
+        api_requests=meter.create_counter(
+            "etos_api.requests",
+            unit="{request}",
+            description="Total decorated ETOS API operations by version, operation, status "
+            "class, and outcome; excludes HTTP requests that do not reach a decorated handler",
+        ),
+        api_request_duration=meter.create_histogram(
+            "etos_api.request.duration",
+            unit="s",
+            description="Duration of decorated ETOS API operations; excludes HTTP requests that "
+            "do not reach a decorated handler",
+            explicit_bucket_boundaries_advisory=DURATION_BUCKETS,
+        ),
+        suite_operations=meter.create_counter(
+            "etos_api.suite.operations",
+            unit="{operation}",
+            description="Total suite download and validation operations",
+        ),
+        suite_operation_duration=meter.create_histogram(
+            "etos_api.suite.operation.duration",
+            unit="s",
+            description="Suite download and validation duration",
+            explicit_bucket_boundaries_advisory=DURATION_BUCKETS,
+        ),
+    )
+
+
+# Created against the global meter provider. Until OpenTelemetry is set up the instruments are
+# no-ops, and they start exporting as soon as the provider is installed.
+INSTRUMENTS = create_instruments(metrics.get_meter("etos_api"))
 
 SUITE_OPERATION_NAMES = ("suite_download", "suite_validation")
 SUITE_OPERATION_OUTCOMES = ("success", "client_error", "server_error")
@@ -103,8 +132,8 @@ def record_suite_operation(api_version: str, operation: str, outcome: str, durat
         "operation": operation,
         "outcome": outcome,
     }
-    SUITE_OPERATIONS_TOTAL.labels(**labels).inc()
-    SUITE_OPERATION_DURATION.labels(**labels).observe(duration)
+    INSTRUMENTS.suite_operations.add(1, labels)
+    INSTRUMENTS.suite_operation_duration.record(duration, labels)
 
 
 # I like the idea of all operations in this file is upper-case.
@@ -115,8 +144,8 @@ def COUNT_REQUESTS(labels: dict, logger: Logger, api_version: str):  # pylint:di
     routes because those requests never reach the decorated handler. FastAPI auto-instrumentation
     handles generic HTTP instrumentation separately; this decorator emits operation metrics only.
 
-    The decorator also observes REQUEST_TIME. Prometheus' ``Histogram.time()`` decorator must not
-    be used on the async route handlers because it returns the un-awaited coroutine to FastAPI.
+    The decorator also records the request duration. A synchronous timing decorator must not be
+    used on the async route handlers because it returns the un-awaited coroutine to FastAPI.
     """
 
     def decorator(func: Callable):
@@ -128,21 +157,31 @@ def COUNT_REQUESTS(labels: dict, logger: Logger, api_version: str):  # pylint:di
             def record(status_code: int):
                 duration = perf_counter() - started
                 cluster = cluster_identity()
-                REQUEST_TIME.labels(**labels, etos_cluster=cluster).observe(duration)
-                REQUESTS_TOTAL.labels(**labels, status=status_code, etos_cluster=cluster).inc()
-                API_REQUESTS_TOTAL.labels(
-                    etos_cluster=cluster,
-                    api_version=api_version,
-                    operation=labels["operation"],
-                    status_class=f"{status_code // 100}xx",
-                    outcome=outcome_for_status(status_code),
-                ).inc()
-                API_REQUEST_DURATION.labels(
-                    etos_cluster=cluster,
-                    api_version=api_version,
-                    operation=labels["operation"],
-                    outcome=outcome_for_status(status_code),
-                ).observe(duration)
+                outcome = outcome_for_status(status_code)
+                instruments = INSTRUMENTS
+                instruments.request_duration.record(duration, {**labels, "etos_cluster": cluster})
+                instruments.requests.add(
+                    1, {**labels, "status": str(status_code), "etos_cluster": cluster}
+                )
+                instruments.api_requests.add(
+                    1,
+                    {
+                        "etos_cluster": cluster,
+                        "api_version": api_version,
+                        "operation": labels["operation"],
+                        "status_class": f"{status_code // 100}xx",
+                        "outcome": outcome,
+                    },
+                )
+                instruments.api_request_duration.record(
+                    duration,
+                    {
+                        "etos_cluster": cluster,
+                        "api_version": api_version,
+                        "operation": labels["operation"],
+                        "outcome": outcome,
+                    },
+                )
 
             try:
                 return await func(*args, **kwargs)

@@ -18,28 +18,48 @@
 from unittest.mock import Mock
 
 import pytest
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
 from etos_api.library import cluster, metrics
 
 
+@pytest.fixture(name="reader")
+def fixture_reader(monkeypatch):
+    """Publish the ETOS API instruments to an in-memory OpenTelemetry reader."""
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(
+        metrics, "INSTRUMENTS", metrics.create_instruments(provider.get_meter("test"))
+    )
+    yield reader
+    provider.shutdown()
+
+
+def cluster_identities(reader: InMemoryMetricReader) -> dict:
+    """Get the etos_cluster attribute values published per metric."""
+    identities = {}
+    for resource_metrics in reader.get_metrics_data().resource_metrics:
+        for scope_metrics in resource_metrics.scope_metrics:
+            for metric in scope_metrics.metrics:
+                identities[metric.name] = {
+                    point.attributes["etos_cluster"] for point in metric.data.data_points
+                }
+    return identities
+
+
 @pytest.mark.parametrize("namespace", ["first", "second"])
-def test_explicit_cluster_routes_api_and_suite_metrics(monkeypatch, namespace):
+def test_explicit_cluster_routes_api_and_suite_metrics(monkeypatch, reader, namespace):
     """The same Cluster CR name in two namespaces must never merge series."""
     monkeypatch.setattr(cluster.Path, "exists", lambda _: False)
     monkeypatch.setenv("ETOS_NAMESPACE", namespace)
     monkeypatch.setenv("ETOS_CLUSTER", "shared")
     assert cluster.cluster_identity() == f"{namespace}/shared"
-    counter, histogram = Mock(), Mock()
-    monkeypatch.setattr(metrics, "SUITE_OPERATIONS_TOTAL", counter)
-    monkeypatch.setattr(metrics, "SUITE_OPERATION_DURATION", histogram)
     metrics.record_suite_operation("v1beta1", "suite_download", "success", 0.5)
-    labels = {
-        "api_version": "v1beta1",
-        "operation": "suite_download",
-        "outcome": "success",
-        "etos_cluster": f"{namespace}/shared",
+    assert cluster_identities(reader) == {
+        "etos_api.suite.operations": {f"{namespace}/shared"},
+        "etos_api.suite.operation.duration": {f"{namespace}/shared"},
     }
-    counter.labels.assert_called_once_with(**labels)
-    histogram.labels.assert_called_once_with(**labels)
 
 
 def test_missing_or_already_qualified_config_is_unassigned(monkeypatch):
@@ -63,7 +83,7 @@ def test_namespace_matches_kubernetes_service_account_precedence(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_all_api_domain_collectors_keep_two_clusters_separate(monkeypatch):
+async def test_all_api_domain_collectors_keep_two_clusters_separate(monkeypatch, reader):
     """Exercise real counters/histograms, including legacy decorated operations."""
     monkeypatch.setattr(cluster.Path, "exists", lambda _: False)
     monkeypatch.setenv("ETOS_CLUSTER", "routing-test")
@@ -79,18 +99,14 @@ async def test_all_api_domain_collectors_keep_two_clusters_separate(monkeypatch)
         await operation()
         metrics.record_suite_operation("v1beta1", "suite_download", "success", 0.5)
 
-    for collector in (
-        metrics.REQUEST_TIME,
-        metrics.REQUESTS_TOTAL,
-        metrics.API_REQUESTS_TOTAL,
-        metrics.API_REQUEST_DURATION,
-        metrics.SUITE_OPERATIONS_TOTAL,
-        metrics.SUITE_OPERATION_DURATION,
-    ):
-        identities = {
-            sample.labels["etos_cluster"]
-            for family in collector.collect()
-            for sample in family.samples
-            if sample.labels.get("etos_cluster", "").endswith("/routing-test")
-        }
-        assert identities == {"first/routing-test", "second/routing-test"}
+    identities = cluster_identities(reader)
+    assert set(identities) == {
+        "etos_api.http.request.duration",
+        "etos_api.http.requests",
+        "etos_api.requests",
+        "etos_api.request.duration",
+        "etos_api.suite.operations",
+        "etos_api.suite.operation.duration",
+    }
+    for published in identities.values():
+        assert published == {"first/routing-test", "second/routing-test"}
