@@ -10,6 +10,10 @@ FROM python:3.13-slim-trixie
 ARG TZ
 ENV TZ=$TZ
 
+ARG BUILD_REVISION
+RUN test -n "$BUILD_REVISION" || (echo "BUILD_REVISION must be supplied" >&2; exit 1)
+ENV BUILD_REVISION=$BUILD_REVISION
+
 COPY --from=build /src/python/dist/*.whl /tmp/
 
 # hadolint ignore=DL3013

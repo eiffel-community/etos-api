@@ -101,6 +101,9 @@ $(foreach prog,$(PROGRAMS), \
     $(eval $(call push-docker-image,$(prog))) \
 )
 
+api-docker:
+	docker build . --build-arg BUILD_REVISION=$(shell git rev-parse --short=8 HEAD) -t $(DOCKER_REGISTRY)/$(DOCKER_NAMESPACE)/etos-api:$(RELEASE_VERSION)
+
 sse-docker: EXTRA_DOCKER_ARGS += --build-arg BUILD_REVISION=$(shell git rev-parse --short HEAD)
 
 # Build dependencies
