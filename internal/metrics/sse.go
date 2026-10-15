@@ -15,56 +15,84 @@
 // limitations under the License.
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"context"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+)
 
 // SSEMetrics observes the v2alpha service's connections and server-side writes.
 type SSEMetrics struct {
 	*HTTPMetrics
-	connections prometheus.Gauge
-	total       prometheus.Counter
-	events      *prometheus.CounterVec
-	disconnects *prometheus.CounterVec
-	errors      *prometheus.CounterVec
-	reconnects  prometheus.Counter
+	connections metric.Int64UpDownCounter
+	total       metric.Int64Counter
+	events      metric.Int64Counter
+	disconnects metric.Int64Counter
+	errors      metric.Int64Counter
+	reconnects  metric.Int64Counter
 }
 
-// NewSSEMetrics registers v2alpha collectors in an isolated service registry.
+// NewSSEMetrics creates the v2alpha instruments on the global meter provider.
 func NewSSEMetrics() *SSEMetrics {
-	m := &SSEMetrics{
-		HTTPMetrics: NewHTTPMetrics("etos_sse"),
-		connections: prometheus.NewGauge(prometheus.GaugeOpts{
-			ConstLabels: clusterLabels(),
-			Name:        "etos_sse_connections_active", Help: "Active v2alpha SSE connections.",
-		}),
-		total: prometheus.NewCounter(prometheus.CounterOpts{
-			ConstLabels: clusterLabels(),
-			Name:        "etos_sse_connections_total", Help: "Total v2alpha SSE connections opened.",
-		}),
-		events: prometheus.NewCounterVec(prometheus.CounterOpts{
-			ConstLabels: clusterLabels(),
-			Name:        "etos_sse_events_delivered_total", Help: "SSE events written by bounded event class; not client receipt.",
-		}, []string{"event_class"}),
-		disconnects: prometheus.NewCounterVec(prometheus.CounterOpts{
-			ConstLabels: clusterLabels(),
-			Name:        "etos_sse_disconnects_total", Help: "SSE connections closed by bounded reason.",
-		}, []string{"reason"}),
-		errors: prometheus.NewCounterVec(prometheus.CounterOpts{
-			ConstLabels: clusterLabels(),
-			Name:        "etos_sse_errors_total", Help: "SSE stream errors by bounded category.",
-		}, []string{"category"}),
-		reconnects: prometheus.NewCounter(prometheus.CounterOpts{
-			ConstLabels: clusterLabels(),
-			Name:        "etos_sse_reconnects_total", Help: "SSE requests carrying Last-Event-ID.",
-		}),
+	return NewSSEMetricsWithMeter(otel.Meter(meterName))
+}
+
+// NewSSEMetricsWithMeter creates the v2alpha instruments on a specific meter.
+func NewSSEMetricsWithMeter(meter metric.Meter) *SSEMetrics {
+	connections, err := meter.Int64UpDownCounter(
+		"etos_sse.connections.active",
+		metric.WithUnit("{connection}"),
+		metric.WithDescription("Active v2alpha SSE connections."),
+	)
+	otel.Handle(err)
+	total, err := meter.Int64Counter(
+		"etos_sse.connections",
+		metric.WithUnit("{connection}"),
+		metric.WithDescription("Total v2alpha SSE connections opened."),
+	)
+	otel.Handle(err)
+	events, err := meter.Int64Counter(
+		"etos_sse.events.delivered",
+		metric.WithUnit("{event}"),
+		metric.WithDescription("SSE events written by bounded event class; not client receipt."),
+	)
+	otel.Handle(err)
+	disconnects, err := meter.Int64Counter(
+		"etos_sse.disconnects",
+		metric.WithUnit("{connection}"),
+		metric.WithDescription("SSE connections closed by bounded reason."),
+	)
+	otel.Handle(err)
+	errors, err := meter.Int64Counter(
+		"etos_sse.errors",
+		metric.WithUnit("{error}"),
+		metric.WithDescription("SSE stream errors by bounded category."),
+	)
+	otel.Handle(err)
+	reconnects, err := meter.Int64Counter(
+		"etos_sse.reconnects",
+		metric.WithUnit("{request}"),
+		metric.WithDescription("SSE requests carrying Last-Event-ID."),
+	)
+	otel.Handle(err)
+	return &SSEMetrics{
+		HTTPMetrics: NewHTTPMetricsWithMeter("etos_sse", meter),
+		connections: connections,
+		total:       total,
+		events:      events,
+		disconnects: disconnects,
+		errors:      errors,
+		reconnects:  reconnects,
 	}
-	m.registry.MustRegister(m.connections, m.total, m.events, m.disconnects, m.errors, m.reconnects)
-	return m
 }
 
 // ConnectionOpened increments current and cumulative connection counts.
 func (m *SSEMetrics) ConnectionOpened() {
-	m.connections.Inc()
-	m.total.Inc()
+	ctx := context.Background()
+	m.connections.Add(ctx, 1, metric.WithAttributes(m.cluster))
+	m.total.Add(ctx, 1, metric.WithAttributes(m.cluster))
 }
 
 // ConnectionClosedWithReason closes one opened connection exactly once.
@@ -74,13 +102,14 @@ func (m *SSEMetrics) ConnectionClosedWithReason(reason string) {
 	default:
 		reason = "unknown"
 	}
-	m.connections.Dec()
-	m.disconnects.WithLabelValues(reason).Inc()
+	ctx := context.Background()
+	m.connections.Add(ctx, -1, metric.WithAttributes(m.cluster))
+	m.disconnects.Add(ctx, 1, metric.WithAttributes(m.cluster, attribute.String("reason", reason)))
 }
 
 // ReconnectRequested counts resume intent without asserting successful replay.
 func (m *SSEMetrics) ReconnectRequested() {
-	m.reconnects.Inc()
+	m.reconnects.Add(context.Background(), 1, metric.WithAttributes(m.cluster))
 }
 
 // StreamError records an error category without exposing backend error text.
@@ -90,7 +119,7 @@ func (m *SSEMetrics) StreamError(category string) {
 	default:
 		category = "unknown"
 	}
-	m.errors.WithLabelValues(category).Inc()
+	m.errors.Add(context.Background(), 1, metric.WithAttributes(m.cluster, attribute.String("category", category)))
 }
 
 // EventDelivered records a server-side event write using a bounded event class.
@@ -100,5 +129,5 @@ func (m *SSEMetrics) EventDelivered(event string) {
 	case "ping", "shutdown", "error":
 		class = event
 	}
-	m.events.WithLabelValues(class).Inc()
+	m.events.Add(context.Background(), 1, metric.WithAttributes(m.cluster, attribute.String("event_class", class)))
 }

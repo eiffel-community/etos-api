@@ -71,6 +71,18 @@ func main() {
 		"name":        "ETOS API",
 	})
 
+	shutdownMetrics, err := metrics.Setup(ctx, "etos-sse", vcsRevision())
+	if err != nil {
+		log.WithError(err).Warning("failed to set up OpenTelemetry metrics")
+	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := shutdownMetrics(flushCtx); err != nil {
+			log.WithError(err).Warning("failed to flush OpenTelemetry metrics")
+		}
+	}()
+
 	log.Info("Loading SSE routes")
 	telemetry := metrics.NewSSEMetrics()
 	v1AlphaSSE := v1alpha.New(cfg, log, ctx)
@@ -115,7 +127,7 @@ func main() {
 	defer stopV2alphaStreams()
 	v2AlphaSSE := v2alpha.New(v2alphaCtx, cfg, log, streamer, telemetry)
 	defer v2AlphaSSE.Close()
-	app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE, metrics.NewEndpoint(telemetry.Handler()))
+	app = application.New(v1AlphaSSE, v1SSE, v2AlphaSSE)
 
 	srv := server.NewWebService(cfg, log, app)
 	srv.OnShutdown(func() {

@@ -19,11 +19,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
 )
 
-// clusterLabels uses only explicit Cluster ownership, never a service-name convention.
-func clusterLabels() prometheus.Labels {
+// clusterAttribute uses only explicit Cluster ownership, never a service-name convention.
+func clusterAttribute() attribute.KeyValue {
 	namespace := strings.TrimSpace(os.Getenv("ETOS_NAMESPACE"))
 	if value, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
 		namespace = strings.TrimSpace(string(value))
@@ -33,5 +33,5 @@ func clusterLabels() prometheus.Labels {
 	if namespace != "" && cluster != "" && !strings.Contains(namespace, "/") && !strings.Contains(cluster, "/") {
 		identity = namespace + "/" + cluster
 	}
-	return prometheus.Labels{"etos_cluster": identity}
+	return attribute.String("etos_cluster", identity)
 }
