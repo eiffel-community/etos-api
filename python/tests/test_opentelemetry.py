@@ -57,4 +57,3 @@ def test_infrastructure_endpoints_are_not_traced():
         assert exporter.get_finished_spans()
     finally:
         FastAPIInstrumentor().uninstrument_app(app)
-
