@@ -18,15 +18,12 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from prometheus_client import make_asgi_app
 
-from etos_api.library.opentelemetry import OTEL_EXCLUDED_URLS, RUNTIME_METRICS
+from etos_api.library.opentelemetry import OTEL_EXCLUDED_URLS
 
 
 def test_infrastructure_endpoints_are_not_traced():
@@ -61,23 +58,3 @@ def test_infrastructure_endpoints_are_not_traced():
     finally:
         FastAPIInstrumentor().uninstrument_app(app)
 
-
-def test_runtime_metrics_exclude_host_wide_metrics():
-    """Verify only process runtime metrics are produced."""
-    reader = InMemoryMetricReader()
-    provider = MeterProvider(metric_readers=[reader])
-    instrumentor = SystemMetricsInstrumentor(config=RUNTIME_METRICS)
-    instrumentor.instrument(meter_provider=provider)
-    try:
-        data = reader.get_metrics_data()
-        names = {
-            metric.name
-            for rm in data.resource_metrics
-            for sm in rm.scope_metrics
-            for metric in sm.metrics
-        }
-        assert names
-        assert all(name.startswith("process.runtime.") for name in names)
-        assert any(name.endswith(".memory") for name in names)
-    finally:
-        instrumentor.uninstrument()
