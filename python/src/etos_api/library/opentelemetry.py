@@ -48,16 +48,6 @@ from etos_api.library.cluster import cluster_identity
 LOGGER = logging.getLogger(__name__)
 # Health probes and Prometheus scrapes are periodic infrastructure requests, not user operations.
 OTEL_EXCLUDED_URLS = ".*/ping,.*/metrics"
-# Only process-level runtime metrics are exported. Host-wide system.* metrics are excluded
-# to keep the number of custom metrics (and their cost) low.
-RUNTIME_METRICS = {
-    "process.runtime.memory": ["rss", "vms"],
-    "process.runtime.cpu.time": ["user", "system"],
-    "process.runtime.gc_count": None,
-    "process.runtime.thread_count": None,
-    "process.runtime.cpu.utilization": None,
-    "process.runtime.context_switches": ["involuntary", "voluntary"],
-}
 
 
 def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
@@ -94,11 +84,11 @@ def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
 
 
 def setup_runtime_metrics(resource: Resource) -> MeterProvider:
-    """Export Python runtime metrics over OTLP."""
+    """Export the default system and Python runtime metrics over OTLP."""
     reader = PeriodicExportingMetricReader(OTLPMetricExporter())
     meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
     metrics.set_meter_provider(meter_provider)
-    SystemMetricsInstrumentor(config=RUNTIME_METRICS).instrument(meter_provider=meter_provider)
+    SystemMetricsInstrumentor().instrument(meter_provider=meter_provider)
     return meter_provider
 
 
