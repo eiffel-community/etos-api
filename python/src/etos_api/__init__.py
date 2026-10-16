@@ -31,7 +31,7 @@ from .main import APP
 os.environ["ETOS_ENABLE_SENDING_LOGS"] = "false"
 
 try:
-    VERSION = version("etos_api")
+    VERSION = os.getenv("BUILD_REVISION") or version("etos_api")
 except PackageNotFoundError:
     VERSION = "Unknown"
 

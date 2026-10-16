@@ -85,6 +85,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            BUILD_REVISION=${{ github.sha }}
       - name: Build SSE image
         uses: docker/build-push-action@v7
         with:
