@@ -39,6 +39,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 type cfg struct {
@@ -127,7 +130,8 @@ func TestSSEGetEvents(t *testing.T) {
 	log := logrus.WithFields(logrus.Fields{})
 	streamer, err := stream.NewFileStreamer(100*time.Millisecond, log)
 	assert.NoError(t, err)
-	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: streamer, metrics: metrics.NewSSEMetrics()}
+	reader, provider := newTestMetrics()
+	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: streamer, metrics: metrics.NewSSEMetricsWithMeter(provider.Meter("test"))}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", fmt.Sprintf("/v2alpha/events/%s", testrunID), nil)
 	request.Header.Set("Last-Event-ID", "0")
@@ -144,11 +148,36 @@ event: message
 data: {"@timestamp":"2026-08-31T10:00:00Z","message":"hello world","name":"etos"}
 
 `))
-	metricResponse := httptest.NewRecorder()
-	handler.metrics.Render(metricResponse)
-	assert.Contains(t, metricResponse.Body.String(), `etos_sse_connections_active{etos_cluster="unassigned"} 0`)
-	assert.Contains(t, metricResponse.Body.String(), `etos_sse_disconnects_total{etos_cluster="unassigned",reason="client_disconnect"} 1`)
-	assert.Contains(t, metricResponse.Body.String(), `etos_sse_reconnects_total{etos_cluster="unassigned"} 1`)
+	cluster := attribute.String("etos_cluster", "unassigned")
+	assert.EqualValues(t, 0, sumValue(t, reader, "etos_sse.connections.active", cluster))
+	assert.EqualValues(t, 1, sumValue(t, reader, "etos_sse.disconnects", cluster, attribute.String("reason", "client_disconnect")))
+	assert.EqualValues(t, 1, sumValue(t, reader, "etos_sse.reconnects", cluster))
+}
+
+// newTestMetrics returns a meter provider whose measurements can be collected by the reader.
+func newTestMetrics() (*sdkmetric.ManualReader, *sdkmetric.MeterProvider) {
+	reader := sdkmetric.NewManualReader()
+	return reader, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+}
+
+// sumValue returns the counter value for the attributes, or -1 when absent.
+func sumValue(t *testing.T, reader *sdkmetric.ManualReader, name string, attrs ...attribute.KeyValue) int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	want := attribute.NewSet(attrs...)
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if sum, ok := m.Data.(metricdata.Sum[int64]); ok && m.Name == name {
+				for _, p := range sum.DataPoints {
+					if p.Attributes.Equals(&want) {
+						return p.Value
+					}
+				}
+			}
+		}
+	}
+	return -1
 }
 
 // TestSSEGetEventsDropsInvalid tests that events which do not match the protocol
@@ -204,7 +233,8 @@ func TestSSEGetEventsStreamUnavailable(t *testing.T) {
 	t.Setenv("ETOS_CLUSTER", "")
 	backendErr := errors.New("dial tcp rabbitmq.internal:5552: connection refused")
 	log := logrus.WithFields(logrus.Fields{})
-	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: unavailableStreamer{err: backendErr}, metrics: metrics.NewSSEMetrics()}
+	reader, provider := newTestMetrics()
+	handler := Handler{logger: log, cfg: &cfg{}, ctx: context.Background(), streamer: unavailableStreamer{err: backendErr}, metrics: metrics.NewSSEMetricsWithMeter(provider.Meter("test"))}
 	responseRecorder := httptest.NewRecorder()
 	request := httptest.NewRequest("GET", "/v2alpha/events/test_sse_stream_unavailable", nil)
 	ps := httprouter.Params{httprouter.Param{Key: "identifier", Value: "test_sse_stream_unavailable"}}
@@ -215,10 +245,7 @@ func TestSSEGetEventsStreamUnavailable(t *testing.T) {
 	body := responseRecorder.Body.String()
 	assert.Equal(t, "event stream is temporarily unavailable\n", body)
 	assert.NotContains(t, body, "rabbitmq.internal")
-	metricResponse := httptest.NewRecorder()
-	handler.metrics.Render(metricResponse)
-	assert.Contains(t, metricResponse.Body.String(), `etos_sse_errors_total{category="backend_failure",etos_cluster="unassigned"} 1`)
-	assert.NotContains(t, metricResponse.Body.String(), "rabbitmq.internal")
+	assert.EqualValues(t, 1, sumValue(t, reader, "etos_sse.errors", attribute.String("etos_cluster", "unassigned"), attribute.String("category", "backend_failure")))
 }
 
 // TestSSEGetEventsShuttingDown tests that a stream is not started when the application is

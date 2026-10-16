@@ -16,18 +16,72 @@
 package metrics
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-// TestHTTPMetricsUsesRouteTemplates verifies request identifiers stay out of metric labels.
+// points collects the data points of one metric as attribute sets.
+func points(t *testing.T, reader *sdkmetric.ManualReader, name string) []metricdata.DataPoint[int64] {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != name {
+				continue
+			}
+			switch data := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				return data.DataPoints
+			}
+		}
+	}
+	return nil
+}
+
+// histogramPoints collects the data points of one histogram metric.
+func histogramPoints(t *testing.T, reader *sdkmetric.ManualReader, name string) []metricdata.HistogramDataPoint[float64] {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if data, ok := m.Data.(metricdata.Histogram[float64]); ok && m.Name == name {
+				return data.DataPoints
+			}
+		}
+	}
+	return nil
+}
+
+// value returns the value of the single point matching the attributes, or -1 when absent.
+func value(pts []metricdata.DataPoint[int64], attrs ...attribute.KeyValue) int64 {
+	want := attribute.NewSet(attrs...)
+	for _, p := range pts {
+		if p.Attributes.Equals(&want) {
+			return p.Value
+		}
+	}
+	return -1
+}
+
+func newReader() (*sdkmetric.ManualReader, *sdkmetric.MeterProvider) {
+	reader := sdkmetric.NewManualReader()
+	return reader, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+}
+
+// TestHTTPMetricsUsesRouteTemplates verifies request identifiers stay out of metric attributes.
 func TestHTTPMetricsUsesRouteTemplates(t *testing.T) {
-	m := NewHTTPMetrics("test")
+	reader, provider := newReader()
+	m := NewHTTPMetricsWithMeter("test", provider.Meter("test"))
 	router := httprouter.New()
 	router.GET("/items/:id", m.Wrap("/items/:id", http.MethodGet, func(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 		w.WriteHeader(http.StatusNoContent)
@@ -37,17 +91,22 @@ func TestHTTPMetricsUsesRouteTemplates(t *testing.T) {
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/items/secret-id", nil))
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 
-	output := httptest.NewRecorder()
-	m.Render(output)
-	require.Contains(t, output.Body.String(), `route="/items/:id"`)
-	require.NotContains(t, output.Body.String(), "secret-id")
+	pts := points(t, reader, "test.service.requests")
+	require.Len(t, pts, 1)
+	route, ok := pts[0].Attributes.Value("route")
+	require.True(t, ok)
+	require.Equal(t, "/items/:id", route.AsString())
+	for _, kv := range pts[0].Attributes.ToSlice() {
+		require.NotContains(t, kv.Value.Emit(), "secret-id")
+	}
 }
 
-// TestSSEMetricsBoundsEventClassAndTracksConnections verifies bounded labels and connection counts.
+// TestSSEMetricsBoundsEventClassAndTracksConnections verifies bounded attributes and connection counts.
 func TestSSEMetricsBoundsEventClassAndTracksConnections(t *testing.T) {
 	t.Setenv("ETOS_NAMESPACE", "")
 	t.Setenv("ETOS_CLUSTER", "")
-	m := NewSSEMetrics()
+	reader, provider := newReader()
+	m := NewSSEMetricsWithMeter(provider.Meter("test"))
 	m.ConnectionOpened()
 	m.EventDelivered("unexpected-user-event")
 	m.EventDelivered("ping")
@@ -55,76 +114,83 @@ func TestSSEMetricsBoundsEventClassAndTracksConnections(t *testing.T) {
 	m.StreamError("sensitive-backend-error")
 	m.ConnectionClosedWithReason("client_disconnect")
 
-	recorder := httptest.NewRecorder()
-	m.Render(recorder)
-	output := recorder.Body.String()
-	require.Contains(t, output, `etos_sse_connections_active{etos_cluster="unassigned"} 0`)
-	require.Contains(t, output, `etos_sse_connections_total{etos_cluster="unassigned"} 1`)
-	require.Contains(t, output, `event_class="data"`)
-	require.Contains(t, output, `event_class="ping"`)
-	require.Contains(t, output, `etos_sse_disconnects_total{etos_cluster="unassigned",reason="client_disconnect"} 1`)
-	require.Contains(t, output, `etos_sse_errors_total{category="unknown",etos_cluster="unassigned"} 1`)
-	require.Contains(t, output, `etos_sse_reconnects_total{etos_cluster="unassigned"} 1`)
-	require.NotContains(t, output, "unexpected-user-event")
-	require.NotContains(t, output, "sensitive-backend-error")
+	cluster := attribute.String("etos_cluster", "unassigned")
+	require.EqualValues(t, 0, value(points(t, reader, "etos_sse.connections.active"), cluster))
+	require.EqualValues(t, 1, value(points(t, reader, "etos_sse.connections"), cluster))
+	events := points(t, reader, "etos_sse.events.delivered")
+	require.EqualValues(t, 1, value(events, cluster, attribute.String("event_class", "data")))
+	require.EqualValues(t, 1, value(events, cluster, attribute.String("event_class", "ping")))
+	require.EqualValues(t, 1, value(points(t, reader, "etos_sse.disconnects"), cluster, attribute.String("reason", "client_disconnect")))
+	require.EqualValues(t, 1, value(points(t, reader, "etos_sse.errors"), cluster, attribute.String("category", "unknown")))
+	require.EqualValues(t, 1, value(points(t, reader, "etos_sse.reconnects"), cluster))
 }
 
 // TestSSEConnectionsCloseOnceWithoutAffectingOtherClients verifies independent client accounting.
 func TestSSEConnectionsCloseOnceWithoutAffectingOtherClients(t *testing.T) {
 	t.Setenv("ETOS_CLUSTER", "")
-	m := NewSSEMetrics()
+	reader, provider := newReader()
+	m := NewSSEMetricsWithMeter(provider.Meter("test"))
+	cluster := attribute.String("etos_cluster", "unassigned")
 	m.ConnectionOpened()
 	m.ConnectionOpened()
 	m.ConnectionClosedWithReason("client_disconnect")
-	recorder := httptest.NewRecorder()
-	m.Render(recorder)
-	require.Contains(t, recorder.Body.String(), `etos_sse_connections_active{etos_cluster="unassigned"} 1`)
-	require.Contains(t, recorder.Body.String(), `etos_sse_disconnects_total{etos_cluster="unassigned",reason="client_disconnect"} 1`)
+	require.EqualValues(t, 1, value(points(t, reader, "etos_sse.connections.active"), cluster))
+	require.EqualValues(t, 1, value(points(t, reader, "etos_sse.disconnects"), cluster, attribute.String("reason", "client_disconnect")))
 	m.ConnectionClosedWithReason("server_shutdown")
-	recorder = httptest.NewRecorder()
-	m.Render(recorder)
-	require.Contains(t, recorder.Body.String(), `etos_sse_connections_active{etos_cluster="unassigned"} 0`)
+	require.EqualValues(t, 0, value(points(t, reader, "etos_sse.connections.active"), cluster))
 }
 
-// TestHTTPHistogramAggregatesStatusClassesWithoutDuplicateSeries verifies shared latency labels aggregate.
+// TestHTTPHistogramAggregatesStatusClassesWithoutDuplicateSeries verifies shared latency attributes aggregate.
 func TestHTTPHistogramAggregatesStatusClassesWithoutDuplicateSeries(t *testing.T) {
 	t.Setenv("ETOS_CLUSTER", "")
-	m := NewHTTPMetrics("test")
-	m.recordRequest("/items/:id", "GET", "4xx", "client_error", 0.01)
-	m.recordRequest("/items/:id", "GET", "5xx", "client_error", 0.02)
-	recorder := httptest.NewRecorder()
-	m.Render(recorder)
-	require.Contains(t, recorder.Body.String(), `test_service_request_duration_seconds_count{etos_cluster="unassigned",method="GET",outcome="client_error",route="/items/:id"} 2`)
-	require.Equal(t, 1, strings.Count(recorder.Body.String(), "\ntest_service_request_duration_seconds_count{"))
+	reader, provider := newReader()
+	m := NewHTTPMetricsWithMeter("test", provider.Meter("test"))
+	m.recordRequest(context.Background(), "/items/:id", "GET", "4xx", "client_error", 0.01)
+	m.recordRequest(context.Background(), "/items/:id", "GET", "5xx", "client_error", 0.02)
+	pts := histogramPoints(t, reader, "test.service.request.duration")
+	require.Len(t, pts, 1)
+	require.EqualValues(t, 2, pts[0].Count)
 }
 
-// TestSSECollectorsUseExplicitCluster verifies all SSE collectors use the configured namespace-qualified cluster identity.
+// TestSSECollectorsUseExplicitCluster verifies all SSE instruments use the configured namespace-qualified cluster identity.
 func TestSSECollectorsUseExplicitCluster(t *testing.T) {
 	for _, cluster := range []string{"first", "second"} {
 		t.Run(cluster, func(t *testing.T) {
 			t.Setenv("ETOS_NAMESPACE", "namespace")
 			t.Setenv("ETOS_CLUSTER", cluster)
-			m := NewSSEMetrics()
+			reader, provider := newReader()
+			m := NewSSEMetricsWithMeter(provider.Meter("test"))
 			m.ConnectionOpened()
 			m.EventDelivered("ping")
 			m.ReconnectRequested()
 			m.StreamError("backend_failure")
 			m.ConnectionClosedWithReason("client_disconnect")
-			m.recordRequest("/events", "GET", "2xx", "success", 0.01)
-			families, err := m.registry.Gather()
-			require.NoError(t, err)
-			for _, family := range families {
-				for _, metric := range family.Metric {
-					found := false
-					for _, label := range metric.Label {
-						if label.GetName() == "etos_cluster" {
-							require.Equal(t, "namespace/"+cluster, label.GetValue())
-							found = true
+			m.recordRequest(context.Background(), "/events", "GET", "2xx", "success", 0.01)
+
+			var rm metricdata.ResourceMetrics
+			require.NoError(t, reader.Collect(context.Background(), &rm))
+			seen := 0
+			check := func(set attribute.Set, name string) {
+				v, ok := set.Value("etos_cluster")
+				require.True(t, ok, name)
+				require.Equal(t, "namespace/"+cluster, v.AsString(), name)
+				seen++
+			}
+			for _, scope := range rm.ScopeMetrics {
+				for _, mt := range scope.Metrics {
+					switch data := mt.Data.(type) {
+					case metricdata.Sum[int64]:
+						for _, p := range data.DataPoints {
+							check(p.Attributes, mt.Name)
+						}
+					case metricdata.Histogram[float64]:
+						for _, p := range data.DataPoints {
+							check(p.Attributes, mt.Name)
 						}
 					}
-					require.True(t, found, family.GetName())
 				}
 			}
+			require.Equal(t, 8, seen)
 		})
 	}
 }
