@@ -46,8 +46,8 @@ from pydantic import BaseModel
 from etos_api.library.cluster import cluster_identity
 
 LOGGER = logging.getLogger(__name__)
-# Health probes and Prometheus scrapes are periodic infrastructure requests, not user operations.
-OTEL_EXCLUDED_URLS = ".*/ping,.*/metrics"
+# Health probes are periodic infrastructure requests, not user operations.
+OTEL_EXCLUDED_URLS = ".*/ping"
 
 
 def setup_opentelemetry(app: FastAPI, version: str) -> Resource:
