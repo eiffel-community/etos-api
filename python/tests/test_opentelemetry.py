@@ -21,15 +21,13 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from prometheus_client import make_asgi_app
 
 from etos_api.library.opentelemetry import OTEL_EXCLUDED_URLS
 
 
 def test_infrastructure_endpoints_are_not_traced():
-    """Verify Prometheus scrapes and pings create no spans while API routes still do."""
+    """Verify pings create no spans while API routes still do."""
     app = FastAPI()
-    app.mount("/metrics", make_asgi_app(), "Metrics")
 
     @app.get("/api/ping")
     async def ping():
@@ -49,7 +47,6 @@ def test_infrastructure_endpoints_are_not_traced():
     )
     try:
         client = TestClient(app)
-        assert client.get("/metrics/").status_code == 200
         assert client.get("/api/ping").status_code == 200
         assert not exporter.get_finished_spans()
 

@@ -17,177 +17,176 @@
 
 import asyncio
 import inspect
-import json
 import logging
-import sys
-from unittest import TestCase
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from prometheus_client import REGISTRY
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
+from etos_api.library import metrics as etos_metrics
 from etos_api.library.metrics import COUNT_REQUESTS, outcome_for_status, record_suite_operation
 from etos_api.main import APP
 
-logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-
+LABELS = {"endpoint": "/api/v1beta1/testrun", "operation": "start_testrun"}
 SUBSUITE_LABELS = {
     "endpoint": "/api/v1beta1/testrun/{sub_suite_id}",
     "operation": "get_subsuite",
 }
-LABELS = {"endpoint": "/api/v1beta1/testrun", "operation": "start_testrun"}
-CLUSTER_LABELS = {**LABELS, "etos_cluster": "unassigned"}
 
 
-def _requests_total(status: int, labels: dict = None) -> float:
-    """Get the current value of http_requests_total for labels and status."""
-    labels = {**(labels or SUBSUITE_LABELS), "etos_cluster": "unassigned"}
-    value = REGISTRY.get_sample_value("http_requests_total", {**labels, "status": str(status)})
-    return value or 0.0
+class MetricsReader:
+    """Read back the data points recorded by the ETOS API instruments."""
+
+    def __init__(self, reader: InMemoryMetricReader):
+        """Set up the reader."""
+        self.reader = reader
+
+    def points(self, name: str) -> list:
+        """Get all data points for a metric."""
+        data = self.reader.get_metrics_data()
+        if data is None:
+            return []
+        return [
+            point
+            for resource_metrics in data.resource_metrics
+            for scope_metrics in resource_metrics.scope_metrics
+            for metric in scope_metrics.metrics
+            if metric.name == name
+            for point in metric.data.data_points
+        ]
+
+    def count(self, name: str, **attributes) -> float:
+        """Sum a counter, or count histogram observations, matching the attributes."""
+        return sum(
+            point.value if hasattr(point, "value") else point.count
+            for point in self.points(name)
+            if attributes.items() <= dict(point.attributes).items()
+        )
+
+    def histogram_sum(self, name: str, **attributes) -> float:
+        """Sum the recorded values of a histogram matching the attributes."""
+        return sum(
+            point.sum
+            for point in self.points(name)
+            if attributes.items() <= dict(point.attributes).items()
+        )
 
 
-def _duration_count(labels: dict = None) -> float:
-    """Get the current observation count of http_request_duration_seconds for labels."""
-    labels = {**(labels or SUBSUITE_LABELS), "etos_cluster": "unassigned"}
-    value = REGISTRY.get_sample_value("http_request_duration_seconds_count", labels)
-    return value or 0.0
+@pytest.fixture(name="otel")
+def fixture_otel(monkeypatch):
+    """Publish the ETOS API instruments to an in-memory OpenTelemetry reader."""
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(
+        etos_metrics, "INSTRUMENTS", etos_metrics.create_instruments(provider.get_meter("test"))
+    )
+    monkeypatch.setattr(etos_metrics, "cluster_identity", lambda: "unassigned")
+    yield MetricsReader(reader)
+    provider.shutdown()
 
 
-class TestMetrics(TestCase):
-    """Test that ETOS API routes record request metrics."""
-
-    client = TestClient(APP, raise_server_exceptions=False)
-
-    def _get_subsuite(self, get_mock: MagicMock) -> int:
-        """Request a v1beta1 sub suite with a mocked Environment client and return the status."""
-        with (
-            patch("etos_api.routers.v1beta1.router.Kubernetes"),
-            patch("etos_api.routers.v1beta1.router.Environment") as environment_mock,
-        ):
-            environment_mock.return_value.get = get_mock
-            response = self.client.get("/api/v1beta1/testrun/my-environment")
-        return response.status_code
-
-    def test_successful_request_is_counted_and_timed(self):
-        """Test that a successful route request records request metrics.
-
-        Approval criteria:
-            - http_requests_total with status 200 shall increase by one.
-            - http_request_duration_seconds shall get one more observation.
-
-        Test steps::
-            1. Request an existing v1beta1 sub suite.
-            2. Verify that the request was counted and timed.
-        """
-        resource = MagicMock()
-        resource.to_dict.return_value = {"spec": {"name": "suite"}}
-        before_total = _requests_total(200)
-        before_count = _duration_count()
-
-        self.assertEqual(self._get_subsuite(MagicMock(return_value=resource)), 200)
-
-        self.assertEqual(_requests_total(200), before_total + 1)
-        self.assertEqual(_duration_count(), before_count + 1)
-
-    def test_http_exception_is_counted_with_its_status(self):
-        """Test that a route raising an HTTPException records its status code.
-
-        Approval criteria:
-            - http_requests_total with status 404 shall increase by one.
-            - http_request_duration_seconds shall get one more observation.
-
-        Test steps::
-            1. Request a v1beta1 sub suite that does not exist.
-            2. Verify that the request was counted with status 404 and timed.
-        """
-        before_total = _requests_total(404)
-        before_count = _duration_count()
-
-        self.assertEqual(self._get_subsuite(MagicMock(return_value=None)), 404)
-
-        self.assertEqual(_requests_total(404), before_total + 1)
-        self.assertEqual(_duration_count(), before_count + 1)
-
-    def test_unhandled_exception_is_counted_as_500(self):
-        """Test that a route raising an unhandled exception is counted as status 500.
-
-        Approval criteria:
-            - The request shall return 500.
-            - http_requests_total with status 500 shall increase by one.
-            - http_request_duration_seconds shall get one more observation.
-
-        Test steps::
-            1. Request a v1beta1 sub suite where the Environment client fails.
-            2. Verify that the request was counted with status 500 and timed.
-        """
-        before_total = _requests_total(500)
-        before_count = _duration_count()
-
-        self.assertEqual(self._get_subsuite(MagicMock(side_effect=RuntimeError("boom"))), 500)
-
-        self.assertEqual(_requests_total(500), before_total + 1)
-        self.assertEqual(_duration_count(), before_count + 1)
-
-    def test_v0_and_v1alpha_routes_are_instrumented(self):
-        """Test that v0 and v1alpha routes record request metrics.
-
-        Approval criteria:
-            - http_requests_total shall increase for the v0 stop and v1alpha sub suite routes.
-
-        Test steps::
-            1. Request a v0 abort and a v1alpha sub suite that do not exist.
-            2. Verify that each request was counted with its status code.
-        """
-        v0_labels = {"endpoint": "/api/v0/etos/{suite_id}", "operation": "stop_testrun"}
-        v1alpha_labels = {
-            "endpoint": "/api/v1alpha/testrun/{suite_id}",
-            "operation": "get_subsuite",
-        }
-        with patch("etos_api.routers.v0.router._abort", side_effect=RuntimeError("boom")):
-            before = _requests_total(500, v0_labels)
-            self.assertEqual(self.client.delete("/api/v0/etos/my-suite").status_code, 500)
-            self.assertEqual(_requests_total(500, v0_labels), before + 1)
-        with (
-            patch("etos_api.routers.v1alpha.router.Kubernetes"),
-            patch("etos_api.routers.v1alpha.router.Environment") as environment_mock,
-        ):
-            environment_mock.return_value.get.return_value = None
-            before = _requests_total(404, v1alpha_labels)
-            self.assertEqual(self.client.get("/api/v1alpha/testrun/my-env").status_code, 404)
-            self.assertEqual(_requests_total(404, v1alpha_labels), before + 1)
-
-    def test_count_requests_measures_awaited_duration(self):
-        """Test that COUNT_REQUESTS observes the time spent awaiting the coroutine.
-
-        Approval criteria:
-            - The observed duration shall include the time the coroutine awaited.
-
-        Test steps::
-            1. Decorate a coroutine that sleeps with COUNT_REQUESTS.
-            2. Run the coroutine.
-            3. Verify that the observed duration sum increased by at least the sleep time.
-        """
-        labels = {"endpoint": "/test/time_requests", "operation": "get_subsuite"}
-
-        @COUNT_REQUESTS(labels, logging.getLogger(__name__), "v1beta1")
-        async def sleeper():
-            await asyncio.sleep(0.05)
-            return "done"
-
-        labels = {**labels, "etos_cluster": "unassigned"}
-        before = REGISTRY.get_sample_value("http_request_duration_seconds_sum", labels) or 0.0
-        self.assertEqual(asyncio.run(sleeper()), "done")
-        after = REGISTRY.get_sample_value("http_request_duration_seconds_sum", labels)
-        self.assertGreaterEqual(after - before, 0.05)
+@pytest.fixture(name="client")
+def fixture_client():
+    """Test client for the ETOS API."""
+    return TestClient(APP, raise_server_exceptions=False)
 
 
-@pytest.fixture(autouse=True)
-def explicit_unassigned_cluster(monkeypatch):
-    """Keep existing operation tests independent of the host environment."""
-    monkeypatch.setattr("etos_api.library.metrics.cluster_identity", lambda: "unassigned")
+def get_subsuite(client: TestClient, get_mock: MagicMock) -> int:
+    """Request a v1beta1 sub suite with a mocked Environment client and return the status."""
+    with (
+        patch("etos_api.routers.v1beta1.router.Kubernetes"),
+        patch("etos_api.routers.v1beta1.router.Environment") as environment_mock,
+    ):
+        environment_mock.return_value.get = get_mock
+        response = client.get("/api/v1beta1/testrun/my-environment")
+    return response.status_code
+
+
+def test_successful_request_is_counted_and_timed(otel, client):
+    """Verify a successful route request is published as a request and a duration.
+
+    Approval criteria:
+        - etos_api.http.requests with status 200 shall increase by one.
+        - etos_api.http.request.duration shall get one observation.
+        - etos_api.requests shall record a versioned success.
+    """
+    resource = MagicMock()
+    resource.to_dict.return_value = {"spec": {"name": "suite"}}
+
+    assert get_subsuite(client, MagicMock(return_value=resource)) == 200
+
+    assert otel.count("etos_api.http.requests", **SUBSUITE_LABELS, status="200") == 1
+    assert otel.count("etos_api.http.request.duration", **SUBSUITE_LABELS) == 1
+    assert (
+        otel.count(
+            "etos_api.requests",
+            api_version="v1beta1",
+            operation="get_subsuite",
+            status_class="2xx",
+            outcome="success",
+            etos_cluster="unassigned",
+        )
+        == 1
+    )
+    assert otel.count("etos_api.request.duration", operation="get_subsuite") == 1
+
+
+def test_http_exception_is_counted_with_its_status(otel, client):
+    """Verify a route raising an HTTPException publishes its status and outcome."""
+    assert get_subsuite(client, MagicMock(return_value=None)) == 404
+
+    assert otel.count("etos_api.http.requests", **SUBSUITE_LABELS, status="404") == 1
+    assert otel.count("etos_api.requests", operation="get_subsuite", outcome="not_found") == 1
+    assert otel.count("etos_api.request.duration", outcome="not_found") == 1
+
+
+def test_unhandled_exception_is_counted_as_500(otel, client):
+    """Verify an unhandled exception is published as a 500 server error."""
+    assert get_subsuite(client, MagicMock(side_effect=RuntimeError("boom"))) == 500
+
+    assert otel.count("etos_api.http.requests", **SUBSUITE_LABELS, status="500") == 1
+    assert otel.count("etos_api.requests", status_class="5xx", outcome="server_error") == 1
+
+
+def test_v0_and_v1alpha_routes_are_instrumented(otel, client):
+    """Verify v0 and v1alpha routes publish request metrics."""
+    v0_labels = {"endpoint": "/api/v0/etos/{suite_id}", "operation": "stop_testrun"}
+    v1alpha_labels = {
+        "endpoint": "/api/v1alpha/testrun/{suite_id}",
+        "operation": "get_subsuite",
+    }
+    with patch("etos_api.routers.v0.router._abort", side_effect=RuntimeError("boom")):
+        assert client.delete("/api/v0/etos/my-suite").status_code == 500
+    assert otel.count("etos_api.http.requests", **v0_labels, status="500") == 1
+    with (
+        patch("etos_api.routers.v1alpha.router.Kubernetes"),
+        patch("etos_api.routers.v1alpha.router.Environment") as environment_mock,
+    ):
+        environment_mock.return_value.get.return_value = None
+        assert client.get("/api/v1alpha/testrun/my-env").status_code == 404
+    assert otel.count("etos_api.http.requests", **v1alpha_labels, status="404") == 1
+
+
+def test_metrics_endpoint_is_gone(client):
+    """Verify the API no longer serves a Prometheus scrape endpoint."""
+    assert client.get("/metrics/").status_code == 404
+
+
+def test_count_requests_measures_awaited_duration(otel):
+    """Verify COUNT_REQUESTS records the time spent awaiting the coroutine."""
+    labels = {"endpoint": "/test/time_requests", "operation": "get_subsuite"}
+
+    @COUNT_REQUESTS(labels, logging.getLogger(__name__), "v1beta1")
+    async def sleeper():
+        await asyncio.sleep(0.05)
+        return "done"
+
+    assert asyncio.run(sleeper()) == "done"
+    assert otel.histogram_sum("etos_api.http.request.duration", **labels) >= 0.05
 
 
 def test_status_outcomes_are_bounded():
@@ -199,29 +198,25 @@ def test_status_outcomes_are_bounded():
     assert outcome_for_status(503) == "server_error"
 
 
-def test_suite_operation_records_bounded_labels_and_duration():
-    """Verify suite observations record only bounded labels and elapsed duration."""
-    counter = Mock()
-    histogram = Mock()
-    with (
-        patch("etos_api.library.metrics.SUITE_OPERATIONS_TOTAL", counter),
-        patch("etos_api.library.metrics.SUITE_OPERATION_DURATION", histogram),
-    ):
-        record_suite_operation("v1beta1", "suite_download", "client_error", 1.25)
+def test_suite_operation_records_bounded_labels_and_duration(otel):
+    """Verify suite observations publish only bounded attributes and the elapsed duration."""
+    record_suite_operation("v1beta1", "suite_download", "client_error", 1.25)
 
-    labels = {
+    expected = {
         "etos_cluster": "unassigned",
         "api_version": "v1beta1",
         "operation": "suite_download",
         "outcome": "client_error",
     }
-    counter.labels.assert_called_once_with(**labels)
-    counter.labels.return_value.inc.assert_called_once_with()
-    histogram.labels.assert_called_once_with(**labels)
-    histogram.labels.return_value.observe.assert_called_once_with(1.25)
+    (counter,) = otel.points("etos_api.suite.operations")
+    (histogram,) = otel.points("etos_api.suite.operation.duration")
+    assert dict(counter.attributes) == expected
+    assert counter.value == 1
+    assert dict(histogram.attributes) == expected
+    assert histogram.sum == 1.25
 
 
-def test_suite_operation_rejects_unbounded_label_values():
+def test_suite_operation_rejects_unbounded_label_values(otel):
     """Verify unsupported suite dimensions are rejected before metric emission."""
     for values in (
         ("v1", "suite_download", "success"),
@@ -230,240 +225,49 @@ def test_suite_operation_rejects_unbounded_label_values():
     ):
         with pytest.raises(ValueError):
             record_suite_operation(*values, duration=0.1)
+    assert not otel.points("etos_api.suite.operations")
 
 
 @pytest.mark.asyncio
-async def test_count_requests_records_versioned_success_and_legacy_counter():
-    """Verify successful operations emit versioned and legacy observations once."""
-    request_counter = Mock()
-    request_time = Mock()
-    api_counter = Mock()
-    api_duration = Mock()
-    logger = Mock()
-
-    @COUNT_REQUESTS(LABELS, logger, "v1beta1")
-    async def operation():
-        return {"created": True}
-
-    with (
-        patch("etos_api.library.metrics.REQUEST_TIME", request_time),
-        patch("etos_api.library.metrics.REQUESTS_TOTAL", request_counter),
-        patch("etos_api.library.metrics.API_REQUESTS_TOTAL", api_counter),
-        patch("etos_api.library.metrics.API_REQUEST_DURATION", api_duration),
-        patch("etos_api.library.metrics.perf_counter", side_effect=[10.0, 11.25]),
-    ):
-        assert await operation() == {"created": True}
-
-    request_time.labels.assert_called_once_with(**CLUSTER_LABELS)
-    request_time.labels.return_value.observe.assert_called_once_with(1.25)
-    request_counter.labels.assert_called_once_with(**CLUSTER_LABELS, status=200)
-    request_counter.labels.return_value.inc.assert_called_once_with()
-    api_counter.labels.assert_called_once_with(
-        etos_cluster="unassigned",
-        api_version="v1beta1",
-        operation="start_testrun",
-        status_class="2xx",
-        outcome="success",
-    )
-    api_counter.labels.return_value.inc.assert_called_once_with()
-    api_duration.labels.assert_called_once_with(
-        api_version="v1beta1",
-        operation="start_testrun",
-        outcome="success",
-        etos_cluster="unassigned",
-    )
-    api_duration.labels.return_value.observe.assert_called_once_with(1.25)
-    logger.exception.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_count_requests_records_http_exception_and_preserves_legacy_status():
-    """Verify HTTP errors preserve their status and emit the normalized outcome."""
-    request_counter = Mock()
-    api_counter = Mock()
-    api_duration = Mock()
-    logger = Mock()
-
-    @COUNT_REQUESTS(LABELS, logger, "v1alpha")
-    async def operation():
-        raise HTTPException(status_code=404, detail="Not found")
-
-    with (
-        patch("etos_api.library.metrics.REQUESTS_TOTAL", request_counter),
-        patch("etos_api.library.metrics.API_REQUESTS_TOTAL", api_counter),
-        patch("etos_api.library.metrics.API_REQUEST_DURATION", api_duration),
-        patch("etos_api.library.metrics.perf_counter", side_effect=[20.0, 20.5]),
-    ):
-        with pytest.raises(HTTPException) as exception:
-            await operation()
-    assert exception.value.status_code == 404
-
-    request_counter.labels.assert_called_once_with(**CLUSTER_LABELS, status=404)
-    request_counter.labels.return_value.inc.assert_called_once_with()
-    api_counter.labels.assert_called_once_with(
-        etos_cluster="unassigned",
-        api_version="v1alpha",
-        operation="start_testrun",
-        status_class="4xx",
-        outcome="not_found",
-    )
-    api_counter.labels.return_value.inc.assert_called_once_with()
-    api_duration.labels.assert_called_once_with(
-        api_version="v1alpha",
-        operation="start_testrun",
-        outcome="not_found",
-        etos_cluster="unassigned",
-    )
-    api_duration.labels.return_value.observe.assert_called_once_with(0.5)
-    logger.exception.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_count_requests_records_unhandled_exception_as_server_error():
-    """Verify unexpected errors are logged, re-raised, and counted as server errors."""
-    request_counter = Mock()
-    api_counter = Mock()
-    api_duration = Mock()
-    logger = Mock()
+async def test_count_requests_logs_unhandled_exception_and_reraises(otel):
+    """Verify unexpected errors are logged, re-raised, and published as server errors."""
+    logger = MagicMock()
 
     @COUNT_REQUESTS(LABELS, logger, "v1beta1")
     async def operation():
         raise RuntimeError("unexpected")
 
-    with (
-        patch("etos_api.library.metrics.REQUESTS_TOTAL", request_counter),
-        patch("etos_api.library.metrics.API_REQUESTS_TOTAL", api_counter),
-        patch("etos_api.library.metrics.API_REQUEST_DURATION", api_duration),
-        patch("etos_api.library.metrics.perf_counter", side_effect=[30.0, 32.0]),
-    ):
-        with pytest.raises(RuntimeError, match="unexpected"):
-            await operation()
+    with pytest.raises(RuntimeError, match="unexpected"):
+        await operation()
 
-    request_counter.labels.assert_called_once_with(**CLUSTER_LABELS, status=500)
-    request_counter.labels.return_value.inc.assert_called_once_with()
-    api_counter.labels.assert_called_once_with(
-        etos_cluster="unassigned",
-        api_version="v1beta1",
-        operation="start_testrun",
-        status_class="5xx",
-        outcome="server_error",
-    )
-    api_counter.labels.return_value.inc.assert_called_once_with()
-    api_duration.labels.assert_called_once_with(
-        api_version="v1beta1",
-        operation="start_testrun",
-        outcome="server_error",
-        etos_cluster="unassigned",
-    )
-    api_duration.labels.return_value.observe.assert_called_once_with(2.0)
     logger.exception.assert_called_once_with("Unhandled exception occurred, setting status to 500")
+    assert otel.count("etos_api.requests", outcome="server_error", status_class="5xx") == 1
 
 
 @pytest.mark.asyncio
-async def test_fastapi_registered_handler_counts_reached_operation_only_once():
-    """Verify registered handlers count once while framework rejects remain excluded."""
+async def test_count_requests_only_counts_requests_reaching_the_handler(otel):
+    """Verify framework rejects and unmatched routes are not counted as operations."""
     app = FastAPI()
-    request_counter = Mock()
-    api_counter = Mock()
-    api_duration = Mock()
-    logger = Mock()
-    handler = Mock()
 
     @app.post("/operation")
-    @COUNT_REQUESTS(LABELS, logger, "v1beta1")
+    @COUNT_REQUESTS(LABELS, MagicMock(), "v1beta1")
     async def operation(value: int = Body(embed=True)):
-        handler(value)
         return {"value": value}
 
-    async def request(method: str, path: str, body: dict):
-        request_messages = [
-            {
-                "type": "http.request",
-                "body": json.dumps(body).encode(),
-                "more_body": False,
-            }
-        ]
-        response_messages = []
+    client = TestClient(app)
+    assert client.post("/operation", json={"value": 7}).status_code == 200
+    assert client.post("/operation", json={"value": "not an integer"}).status_code == 422
+    assert client.post("/unmatched", json={"value": 7}).status_code == 404
 
-        async def receive():
-            if request_messages:
-                return request_messages.pop(0)
-            return {"type": "http.disconnect"}
-
-        async def send(message):
-            response_messages.append(message)
-
-        raw_path = path.encode()
-        await app(
-            {
-                "type": "http",
-                "asgi": {"version": "3.0", "spec_version": "2.3"},
-                "http_version": "1.1",
-                "method": method,
-                "scheme": "http",
-                "path": path,
-                "raw_path": raw_path,
-                "query_string": b"",
-                "root_path": "",
-                "headers": [
-                    (b"host", b"testserver"),
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(json.dumps(body).encode())).encode()),
-                ],
-                "client": ("127.0.0.1", 123),
-                "server": ("testserver", 80),
-            },
-            receive,
-            send,
-        )
-        response_start = next(
-            message for message in response_messages if message["type"] == "http.response.start"
-        )
-        response_body = b"".join(
-            message.get("body", b"")
-            for message in response_messages
-            if message["type"] == "http.response.body"
-        )
-        return response_start["status"], json.loads(response_body)
-
-    with (
-        patch("etos_api.library.metrics.REQUESTS_TOTAL", request_counter),
-        patch("etos_api.library.metrics.API_REQUESTS_TOTAL", api_counter),
-        patch("etos_api.library.metrics.API_REQUEST_DURATION", api_duration),
-    ):
-        status, body = await request("POST", "/operation", {"value": 7})
-        invalid_status, _ = await request("POST", "/operation", {"value": "not an integer"})
-        missing_status, _ = await request("POST", "/unmatched", {"value": 7})
-
-    assert status == 200
-    assert body == {"value": 7}
-    assert invalid_status == 422
-    assert missing_status == 404
-    handler.assert_called_once_with(7)
-    request_counter.labels.assert_called_once_with(**CLUSTER_LABELS, status=200)
-    request_counter.labels.return_value.inc.assert_called_once_with()
-    api_counter.labels.assert_called_once_with(
-        etos_cluster="unassigned",
-        api_version="v1beta1",
-        operation="start_testrun",
-        status_class="2xx",
-        outcome="success",
-    )
-    api_counter.labels.return_value.inc.assert_called_once_with()
-    api_duration.labels.assert_called_once_with(
-        api_version="v1beta1",
-        operation="start_testrun",
-        outcome="success",
-        etos_cluster="unassigned",
-    )
-    api_duration.labels.return_value.observe.assert_called_once()
+    assert otel.count("etos_api.requests") == 1
+    assert otel.count("etos_api.http.requests", status="200") == 1
 
 
 def test_mounted_api_route_handlers_are_coroutine_functions():
     """Verify metric decorators keep every mounted API handler awaitable by FastAPI.
 
-    A synchronous wrapper, such as Prometheus' ``Histogram.time()`` decorator, makes FastAPI run
-    the handler in a threadpool and return the un-awaited coroutine as the response.
+    A synchronous wrapper makes FastAPI run the handler in a threadpool and return the
+    un-awaited coroutine as the response.
     """
     endpoints = [
         route.endpoint

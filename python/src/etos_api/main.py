@@ -16,7 +16,6 @@
 """ETOS API."""
 
 from fastapi import FastAPI
-from prometheus_client import make_asgi_app
 
 from etos_api.routers.v0 import ETOSV0
 from etos_api.routers.v1alpha import ETOSV1ALPHA
@@ -30,4 +29,3 @@ APP.mount("/api/v1alpha", ETOSV1ALPHA, "ETOS V1 Alpha")
 APP.mount("/api/v1beta1", ETOSV1BETA1, "ETOS V1 Beta")
 APP.mount("/api/v0", ETOSV0, "ETOS V0")
 APP.mount("/api", DEFAULT_VERSION, "ETOS V0")
-APP.mount("/metrics", make_asgi_app(), "Metrics")
