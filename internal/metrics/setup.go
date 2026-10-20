@@ -17,9 +17,11 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
+	goruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -27,10 +29,10 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
-// Setup installs a global OpenTelemetry meter provider exporting over OTLP/gRPC.
+// Setup installs a global OpenTelemetry meter provider with Go runtime metrics exporting over OTLP/gRPC.
 //
 // Nothing is exported unless OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
-// is set, in which case the returned shutdown function is a no-op. The exporter and resource are
+// is set; without either endpoint the returned shutdown function is a no-op. The exporter and resource are
 // further configured through the standard OTEL_* environment variables.
 func Setup(ctx context.Context, serviceName, serviceVersion string) (func(context.Context) error, error) {
 	noop := func(context.Context) error { return nil }
@@ -50,12 +52,15 @@ func Setup(ctx context.Context, serviceName, serviceVersion string) (func(contex
 		resource.WithProcess(),
 	)
 	if err != nil {
-		return noop, fmt.Errorf("create OpenTelemetry resource: %w", err)
+		return noop, errors.Join(fmt.Errorf("create OpenTelemetry resource: %w", err), exporter.Shutdown(ctx))
 	}
 	provider := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
 	)
+	if err := goruntime.Start(goruntime.WithMeterProvider(provider)); err != nil {
+		return noop, errors.Join(fmt.Errorf("start Go runtime metrics: %w", err), provider.Shutdown(ctx))
+	}
 	otel.SetMeterProvider(provider)
 	return provider.Shutdown, nil
 }
