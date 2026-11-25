@@ -17,8 +17,11 @@
 
 import logging
 import os
+from dataclasses import dataclass
+from hashlib import sha256
+from json import dumps
 from typing import Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import aiohttp
 from etos_lib import ETOS
@@ -28,6 +31,7 @@ from etos_lib.kubernetes.schemas.v1beta1.testrun import Metadata, Providers, Ret
 from etos_lib.kubernetes.schemas.v1beta1.testrun import TestRun as TestRunSchema
 from etos_lib.kubernetes.schemas.v1beta1.testrun import TestRunSpec
 from fastapi import HTTPException
+from kubernetes.dynamic.exceptions import ConflictError, NotFoundError
 from opentelemetry import baggage as otel_baggage
 from opentelemetry import context as otel_context
 from opentelemetry.propagate import inject
@@ -38,8 +42,31 @@ from yaml import safe_load
 from etos_api.library.docker import Docker
 from etos_api.library.cluster import cluster_identity
 
-from .schemas import StartTestrunRequest
+from .schemas import StartTestrunRequest, StartTestrunResponse
 from .utilities import convert_to_rfc1123, wait_for_artifact_created
+
+REQUEST_FINGERPRINT = "etos.eiffel-community.github.io/start-request-fingerprint"
+START_EVENT_REPOSITORY = "etos.eiffel-community.github.io/start-event-repository"
+
+
+@dataclass(frozen=True)
+class IdempotentStart:
+    """Identify a keyed request independently of its server-generated run ID."""
+
+    name: str
+    fingerprint: str
+
+    @classmethod
+    def from_request(cls, key: UUID, request: StartTestrunRequest) -> "IdempotentStart":
+        """Derive a DNS label from the key and hash the validated request.
+
+        :param key: Client-generated key for one logical start.
+        :param request: Validated start request.
+        :return: Kubernetes name and canonical request fingerprint.
+        """
+        name_hash = sha256(f"{cluster_identity()}:{key}".encode()).hexdigest()
+        payload = dumps(request.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+        return cls(f"idem-{name_hash[:58]}", sha256(payload.encode()).hexdigest())
 
 
 class MinimalSpec(BaseModel):
@@ -176,15 +203,55 @@ class TestRun:
             name = f"{name[:57]}-"
         return name
 
+    @staticmethod
+    def replay(start: IdempotentStart) -> Optional[StartTestrunResponse]:
+        """Return the stored result for a matching keyed request, if one exists.
+
+        :param start: Name and fingerprint of the retried request.
+        :return: Original start response, or None if no TestRun exists.
+        :raises HTTPException: If the name exists but the request cannot be replayed.
+        """
+        client = TestRunClient(Kubernetes(version="v1beta1"))
+        try:
+            existing = client.get(start.name)
+        except NotFoundError:
+            return None
+        if existing is None:
+            return None
+        run = existing.to_dict()
+        metadata = run["metadata"]
+        annotations = metadata.get("annotations", {})
+        if annotations.get(REQUEST_FINGERPRINT) != start.fingerprint:
+            raise HTTPException(status_code=409, detail="Idempotency key already used")
+        if metadata.get("deletionTimestamp"):
+            raise HTTPException(status_code=409, detail="The original testrun is being deleted")
+        spec = run["spec"]
+        return StartTestrunResponse(
+            tercc=spec["id"],
+            artifact_id=spec["artifact"],
+            artifact_identity=spec["identity"],
+            event_repository=annotations[START_EVENT_REPOSITORY],
+        )
+
     async def create(
         self,
         ctx: otel_context.Context,
         etos: StartTestrunRequest,
-        name: str,
         artifact: Artifact,
         minimal_spec: MinimalSpec,
-    ):
-        """Create a testrun resource in Kubernetes for ETOS to execute."""
+        *,
+        start: Optional[IdempotentStart] = None,
+    ) -> StartTestrunResponse:
+        """Create a TestRun in Kubernetes or return the result of a concurrent keyed request.
+
+        :param ctx: OpenTelemetry context for the run.
+        :param etos: Validated start request.
+        :param artifact: Resolved artifact.
+        :param minimal_spec: Validated suite specification.
+        :param start: Idempotency metadata if the client provided a key.
+        :return: Response for the created or previously stored run.
+        """
+        name = start.name if start is not None else await self.generate_name(minimal_spec.name)
         self.logger.info("Creating testrun with name: %r", name)
         self.logger.debug(artifact)
         self.logger.debug(minimal_spec)
@@ -202,11 +269,16 @@ class TestRun:
             annotations["etos.eiffel-community.github.io/traceparent"] = carrier["traceparent"]
         if carrier.get("baggage"):
             annotations["etos.eiffel-community.github.io/baggage"] = carrier["baggage"]
+        event_repository = self.etos_library.debug.graphql_server
+        if start is not None:
+            annotations[REQUEST_FINGERPRINT] = start.fingerprint
+            annotations[START_EVENT_REPOSITORY] = event_repository
 
         kubernetes = Kubernetes(version="v1beta1")
         testrun = TestRunSchema(
             metadata=Metadata(
-                generateName=name,
+                name=start.name if start is not None else None,
+                generateName=name if start is None else None,
                 namespace=kubernetes.namespace,
                 labels={
                     "etos.eiffel-community.github.io/id": self.testrun_id,
@@ -237,10 +309,25 @@ class TestRun:
             ),
         )
         testrun_client = TestRunClient(kubernetes)
-        created = testrun_client.create(testrun)
-        if not created:
-            raise HTTPException(status_code=500, detail="Failed to create testrun")
+        try:
+            if not testrun_client.create(testrun):
+                raise HTTPException(status_code=500, detail="Failed to create testrun")
+        except ConflictError as error:
+            if start is None:
+                raise
+            previous = self.replay(start)
+            if previous is None:
+                raise HTTPException(
+                    status_code=409, detail="Original testrun no longer exists"
+                ) from error
+            return previous
         self.logger.info("ETOS triggered successfully")
+        return StartTestrunResponse(
+            tercc=self.testrun_id,
+            artifact_id=artifact.artifact_id,
+            artifact_identity=artifact.identity,
+            event_repository=event_repository,
+        )
 
     async def delete(self, suite_id: str) -> bool:
         """Delete a testrun by suite_id. Returns True if a testrun was deleted, False otherwise."""
