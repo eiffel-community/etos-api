@@ -41,6 +41,7 @@ from yaml import safe_load
 
 from etos_api.library.docker import Docker
 from etos_api.library.cluster import cluster_identity
+from etos_api.library.utilities import sync_to_async
 
 from .schemas import StartTestrunRequest, StartTestrunResponse
 from .utilities import convert_to_rfc1123, wait_for_artifact_created
@@ -329,7 +330,7 @@ class TestRun:
         except ConflictError as error:
             if start is None:
                 raise
-            previous = self.replay(start, minimal_spec.name)
+            previous = await sync_to_async(self.replay, start, minimal_spec.name)
             if previous is None:
                 raise HTTPException(
                     status_code=409, detail="Original testrun no longer exists"

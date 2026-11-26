@@ -34,6 +34,7 @@ from etos_api.library.metrics import (
     record_suite_operation,
 )
 from etos_api.library.opentelemetry import context
+from etos_api.library.utilities import sync_to_async
 
 from .schemas import AbortTestrunResponse, StartTestrunRequest, StartTestrunResponse
 from .testrun import IdempotentStart, TestRun
@@ -178,7 +179,7 @@ async def _create_testrun(
     )
 
     if start is not None:
-        previous = TestRun.replay(start, testrun_spec.name)
+        previous = await sync_to_async(TestRun.replay, start, testrun_spec.name)
         if previous is not None:
             return previous
 
