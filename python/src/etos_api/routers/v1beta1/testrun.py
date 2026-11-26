@@ -53,20 +53,29 @@ START_EVENT_REPOSITORY = "etos.eiffel-community.github.io/start-event-repository
 class IdempotentStart:
     """Identify a keyed request independently of its server-generated run ID."""
 
-    name: str
+    key_hash: str
     fingerprint: str
 
     @classmethod
     def from_request(cls, key: UUID, request: StartTestrunRequest) -> "IdempotentStart":
-        """Derive a DNS label from the key and hash the validated request.
+        """Hash the idempotency key and validated request.
 
         :param key: Client-generated key for one logical start.
         :param request: Validated start request.
-        :return: Kubernetes name and canonical request fingerprint.
+        :return: Key hash and canonical request fingerprint.
         """
         name_hash = sha256(f"{cluster_identity()}:{key}".encode()).hexdigest()
         payload = dumps(request.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-        return cls(f"idem-{name_hash[:58]}", sha256(payload.encode()).hexdigest())
+        return cls(name_hash[:32], sha256(payload.encode()).hexdigest())
+
+    def name_for_suite(self, suite_name: str) -> str:
+        """Use the suite name as a prefix for the deterministic TestRun name.
+
+        :param suite_name: Name from the downloaded test suite.
+        :return: Suite-based Kubernetes name.
+        """
+        prefix = convert_to_rfc1123(suite_name)[:30].rstrip("-") or "testrun"
+        return f"{prefix}-{self.key_hash}"
 
 
 class MinimalSpec(BaseModel):
@@ -204,16 +213,17 @@ class TestRun:
         return name
 
     @staticmethod
-    def replay(start: IdempotentStart) -> Optional[StartTestrunResponse]:
+    def replay(start: IdempotentStart, suite_name: str) -> Optional[StartTestrunResponse]:
         """Return the stored result for a matching keyed request, if one exists.
 
-        :param start: Name and fingerprint of the retried request.
+        :param start: Key hash and fingerprint of the retried request.
+        :param suite_name: Name from the downloaded test suite.
         :return: Original start response, or None if no TestRun exists.
         :raises HTTPException: If the name exists but the request cannot be replayed.
         """
         client = TestRunClient(Kubernetes(version="v1beta1"))
         try:
-            existing = client.get(start.name)
+            existing = client.get(start.name_for_suite(suite_name))
         except NotFoundError:
             return None
         if existing is None:
@@ -251,7 +261,11 @@ class TestRun:
         :param start: Idempotency metadata if the client provided a key.
         :return: Response for the created or previously stored run.
         """
-        name = start.name if start is not None else await self.generate_name(minimal_spec.name)
+        name = (
+            start.name_for_suite(minimal_spec.name)
+            if start is not None
+            else await self.generate_name(minimal_spec.name)
+        )
         self.logger.info("Creating testrun with name: %r", name)
         self.logger.debug(artifact)
         self.logger.debug(minimal_spec)
@@ -277,7 +291,7 @@ class TestRun:
         kubernetes = Kubernetes(version="v1beta1")
         testrun = TestRunSchema(
             metadata=Metadata(
-                name=start.name if start is not None else None,
+                name=name if start is not None else None,
                 generateName=name if start is None else None,
                 namespace=kubernetes.namespace,
                 labels={
@@ -315,7 +329,7 @@ class TestRun:
         except ConflictError as error:
             if start is None:
                 raise
-            previous = self.replay(start)
+            previous = self.replay(start, minimal_spec.name)
             if previous is None:
                 raise HTTPException(
                     status_code=409, detail="Original testrun no longer exists"

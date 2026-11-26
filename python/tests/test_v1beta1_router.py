@@ -26,8 +26,8 @@ from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic.exceptions import ConflictError, NotFoundError
 
 from etos_api.main import APP
-from etos_api.routers.v1beta1.schemas import StartTestrunResponse
-from etos_api.routers.v1beta1.testrun import Artifact
+from etos_api.routers.v1beta1.schemas import StartTestrunRequest, StartTestrunResponse
+from etos_api.routers.v1beta1.testrun import Artifact, IdempotentStart
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
@@ -143,6 +143,9 @@ class TestV1Beta1Router(TestCase):
         self.assertEqual(response.status_code, 500, response.text)
         self.assertEqual(response.json()["detail"], "Failed to create testrun")
         client.return_value.create.assert_called_once()
+        created = client.return_value.create.call_args.args[0]
+        self.assertIsNone(created.metadata.name)
+        self.assertEqual(created.metadata.generateName, "testsuite-")
 
     def test_start_testrun_suite_with_dataset(self):
         """Test that a request dataset is merged into a suite dataset.
@@ -202,11 +205,17 @@ class TestV1Beta1Router(TestCase):
             self.assertNotEqual(first.json()["tercc"], headers["Idempotency-Key"])
             created = client.create.call_args.args[0]
             self.assertIsNone(created.metadata.generateName)
+            self.assertRegex(created.metadata.name, r"^testsuite-[0-9a-f]{32}$")
+            client.get.assert_called_once_with(created.metadata.name)
             stored = Mock()
             stored.to_dict.return_value = created.model_dump()
 
-            client.get.side_effect = None
-            client.get.return_value = stored
+            def get_stored(name: str) -> Mock:
+                if name == created.metadata.name:
+                    return stored
+                raise NotFoundError(ApiException(status=404))
+
+            client.get.side_effect = get_stored
             self.assertEqual(
                 self.client.post(path, headers=headers, json=body).json(), first.json()
             )
@@ -217,7 +226,7 @@ class TestV1Beta1Router(TestCase):
                 ).status_code,
                 409,
             )
-            download.assert_awaited_once()
+            self.assertEqual(download.await_count, 3)
             client.create.assert_called_once()
 
             client.get.side_effect = [missing, stored]
@@ -234,3 +243,13 @@ class TestV1Beta1Router(TestCase):
             self.assertNotEqual(
                 client.create.call_args.args[0].metadata.name, created.metadata.name
             )
+
+    def test_keyed_name_handles_long_and_non_dns_suite_names(self) -> None:
+        """Keep keyed names valid and deterministic for unusual suite names."""
+        request = StartTestrunRequest(
+            artifact_identity="pkg:x/y", test_suite_url="http://localhost/suite.yaml"
+        )
+        start = IdempotentStart.from_request(uuid4(), request)
+        name = start.name_for_suite("A" * 29 + " /" + "B" * 40)
+        self.assertRegex(name, r"^a{29}-[0-9a-f]{32}$")
+        self.assertEqual(start.name_for_suite("!!!"), "testrun-" + name.rsplit("-", 1)[1])

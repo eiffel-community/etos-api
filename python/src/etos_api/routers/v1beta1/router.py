@@ -146,10 +146,6 @@ async def _create_testrun(
     :param start: Idempotency metadata if the client provided a key.
     :return: The start response.
     """
-    if start is not None:
-        previous = TestRun.replay(start)
-        if previous is not None:
-            return previous
     testrun = TestRun(span)
 
     download_started = perf_counter()
@@ -180,6 +176,11 @@ async def _create_testrun(
     record_suite_operation(
         "v1beta1", "suite_validation", "success", perf_counter() - validation_started
     )
+
+    if start is not None:
+        previous = TestRun.replay(start, testrun_spec.name)
+        if previous is not None:
+            return previous
 
     datasets = etos.dataset
     if isinstance(datasets, list):
